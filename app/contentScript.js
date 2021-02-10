@@ -1,2 +1,257 @@
 console.warn("Content script loaded!")
-alert("Loaded!");
+var port = chrome.runtime.connect();
+var CONNECTED = true;
+var LOADED = false;
+console.log("Connected to port");
+port.onMessage.addListener(function(message, sender, response) {
+    console.log(message);
+    if(message.type === "gotTimes") {
+        for(let a in message.data) {
+            CACHE[a] = message.data[a];
+        }
+        setTimes();
+    } else if (message.type === "error") {
+        console.error(message.data);
+    } else if(message.type === "savedTime") {
+        for(let id in message.data) {
+            if(id === WATCHING) {
+                console.log(`Saved up to ${message.data[id]}`);
+                getVideoTxt().innerText = toTime(message.data[id]);
+            }
+        }
+    }
+});
+port.onDisconnect.addListener(function() {
+    console.warn("Disconnected from port.");
+    CONNECTED = false;
+    if(VIDEO) {
+        VIDEO.pause();
+        getVideoTxt().innerText = "!! Disconnected !!";
+    }
+})
+const CACHE = {}
+var WATCHING = null;
+var VIDEO = null;
+console.log(window.location);
+var IS_MOBILE = window.location.hostname.startsWith("m.");
+
+function getTxtContainer() {
+    if(IS_MOBILE) {
+        return document.getElementsByClassName("time-display-content cbox")[0];
+    } else {
+        return document.getElementsByClassName("ytp-time-display notranslate")[0];
+    }
+}
+
+function getVideoTxt() {
+    var txt = document.getElementById("mlapi-time-display");
+    if(txt)
+        return txt;
+    var container = getTxtContainer();
+    if(container === null || container === undefined) {
+        txt = document.createElement("span");
+        return txt; // temp var for now.
+    }
+    console.log(container);
+    var sep = document.createElement("span");
+    sep.classList.add(IS_MOBILE ? "time-delimiter" : "ytp-time-separator");
+    sep.innerText = " -- ";
+    container.appendChild(sep);
+    txt = document.createElement("span");
+    txt.id = "mlapi-time-display";
+    txt.classList.add(IS_MOBILE ? "time-second" : "ytp-time-current");
+    container.appendChild(txt);
+    return txt;
+}
+
+function getId(url) {
+    url = url || window.location.href;
+    if(url.indexOf("?v=") === -1)
+        return null;
+    var id = url.substring(url.indexOf("?v=") + 3);
+
+    var index = id.indexOf("&");
+    if(index !== -1) {
+        id = id.substring(0, index);
+    }
+    return id;
+}
+
+function pad(value, length) {
+    return (value.toString().length < length) ? pad("0"+value, length):value;
+}
+function toTime(diff) {
+    var hours = Math.floor(diff / (60 * 60));
+    diff -= hours * (60 * 60);
+    var mins = Math.floor(diff / (60));
+    diff -= mins * (60);
+    var seconds = Math.floor(diff);
+    if(hours === 0) {
+        return `${pad(mins, 2)}:${pad(seconds, 2)}`;
+    } else {
+        return `${pad(hours, 2)}:${pad(mins, 2)}:${pad(seconds, 2)}`;
+    }
+}
+function parseToSeconds(text) {
+    var split = `${text}`.split(":");
+    var hours = 0;
+    var mins = 0;
+    var secs = 0;
+    if(split.length === 3) {
+        hours = parseInt(split[0]);
+        mins = parseInt(split[1]);
+        secs = parseInt(split[2]);
+    } else if(split.length === 2) {
+        mins = parseInt(split[0]);
+        secs = parseInt(split[1]);
+    } else {
+        secs = parseInt(split[0]);
+    }
+    return (hours * 60 * 60) + (mins * 60) + secs;
+}
+
+function getThumbnails() {
+    if(IS_MOBILE) {
+        return document.getElementsByTagName("ytm-thumbnail-overlay-time-status-renderer");
+    } else {
+        return document.getElementsByClassName("style-scope ytd-thumbnail-overlay-time-status-renderer");
+    }
+}
+
+function getVideo() {
+    if(IS_MOBILE) 
+        return document.getElementsByClassName("video-stream html5-main-video")[0];
+    else
+        return document.getElementsByClassName("video-stream html5-main-video")[0];
+}
+
+function setThumbnails() {
+    //console.log(CACHE);
+    var mustFetch = []
+    var thumbNails = getThumbnails();
+    for(const i in thumbNails) {
+        var element = thumbNails[i];
+        if(element.nodeName !== "SPAN")
+            continue;
+        var state = element.getAttribute("mlapi-done") ?? "unfetched";
+        if(state === "fetched")
+            continue;
+        var anchor = element.parentElement.parentElement.parentElement;
+        var id = getId(anchor.href);
+        if(id) {
+            if(id in CACHE) {
+                var time = CACHE[id];
+                var vidLength = parseToSeconds(element.innerText);
+                var perc = time / vidLength;
+                if(perc >= 0.9) {
+                    element.innerText = "✔️ " + element.innerText;
+                    element.style.color = "green";
+                } else if(perc > 0) {
+                    var remaining = vidLength - time;
+                    element.innerText = toTime(remaining);
+                    element.style.color = "orange";
+                }
+                CACHE[id] = time;
+                element.setAttribute("mlapi-done", "fetched")
+            } else {
+                if(state === "fetching") {
+                } else {
+                    element.setAttribute("mlapi-done", "fetching");
+                    mustFetch.push(id);
+                }
+            }
+        }
+    }
+    return mustFetch;
+}
+
+function setTimes() {
+    var mustFetch = setThumbnails();
+
+    if(WATCHING !== null && LOADED === false) {
+        var data = CACHE[WATCHING];
+        if(data !== null) {
+            VIDEO.currentTime = data;
+            getVideoTxt().innerText = toTime(data);
+            LOADED = true;
+            if(VIDEO.paused)
+                VIDEO.play();
+        }
+    }
+
+    if(mustFetch.length > 0) {
+        port.postMessage({type: "getTimes", data: mustFetch});
+    }
+}
+
+function getThumbnailFor(id) {
+    var thumbNails = getThumbnails();
+    for(const element in thumbNails) {
+        var anchor = element.parentElement.parentElement.parentElement;
+        if(anchor && anchor.href.contains(id))
+            return element;
+    }
+    return null;
+}
+
+function boot() {
+    WATCHING = getId();
+    if(WATCHING) {
+        console.log(`Loaded watching ${WATCHING}`);
+        VIDEO = getVideo();
+        VIDEO.onpause = function() {
+            if(LOADED === false)
+                return false;
+            console.log("Video play stopped.");
+            if(CONNECTED)
+                saveTime();
+            clearInterval(videoSync);
+            getVideoTxt().innerText += " | Paused";
+        };
+        VIDEO.onplay = function() {
+            console.log("Video play started.");
+            if(CONNECTED === false) {
+                VIDEO.pause();
+                console.error("Cannot play video: not syncing");
+                return;
+            }
+            setInterval(videoSync, 1000);
+            getVideoTxt().innerText = "Sync started...";
+        };
+        VIDEO.onended = function() {
+            saveTime();
+            clearInterval(videoSync);
+            getVideoTxt().innerText += " | Ended";
+        }
+        VIDEO.pause();
+        getVideoTxt().innerText = "Fetching...";
+        port.postMessage({type: "getTimes", data: [WATCHING]});
+    }
+}
+
+function saveTime() {
+    thing = {};
+    thing[WATCHING] = VIDEO.currentTime;
+    port.postMessage({type: "setTime", data: thing});
+}
+
+function videoSync() {
+    if(VIDEO.paused)
+        return;
+    saveTime();
+
+}
+
+setInterval(function() {
+    var tofetch = setThumbnails();
+    if(tofetch.length > 0)
+        port.postMessage({type: "getTimes", data: tofetch});
+}, 5000);
+setInterval(function() {
+    var w = getId();
+    if(WATCHING !== w) {
+        WATCHING = w;
+        console.log(`Now watching ${w}`);
+        boot();
+    }
+}, 500);
