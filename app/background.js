@@ -2,23 +2,67 @@ chrome.browserAction.onClicked.addListener(function(tab) {
     chrome.tabs.create({url: "popup.html"})
 });
 
-console.log("Background started");
+/*var _oldLog = console.log;
+console.log = function(str) {
+    var inMessage;
+    if(typeof str === "string")
+        inMessage = str;
+    else
+        inMessage = str.toString();
+    _oldLog(str);
+    fetch(`${URL}/log`, {
+        method: "POST",
+        body: JSON.stringify({"message": inMessage})
+    });
+}*/
+
 var INFO = {};
-var TAB = null;
+var PORTS = {};
+var PORTS_WATCHING = {};
 var URL = "https://ml-api.uk.ms/api/tracker";
 var CACHE = {};
 var GET_QUEUE = [];
 var SET_QUEUE = {}
+console.log("Background started");
+
+function postMessage(message) {
+    for(let key in PORTS) {
+        PORTS[key].postMessage(message);
+    }
+}
 
 function id(_tab) {
-    return `${_tab.sender.tab.id} @ ${_tab.sender.url}`;
+    return _tab.sender.tab.id;
+}
+function getName(_tab) {
+    return `${id(_tab)} @ ${_tab.sender.url}`;
+}
+function getWatchingId(url) {
+    url = url;
+    if(url.indexOf("?v=") === -1)
+        return null;
+    var id = url.substring(url.indexOf("?v=") + 3);
+
+    var index = id.indexOf("&");
+    if(index !== -1) {
+        id = id.substring(0, index);
+    }
+    return id;
+}
+
+function getPortAlreadyWatching(videoId) {
+    for(const portId in PORTS_WATCHING) {
+        var port = PORTS[portId];
+        var watching = PORTS_WATCHING[portId];
+        if(watching === videoId) {
+            return port;
+        }
+    }
+    return null;
 }
 
 chrome.runtime.onConnect.addListener(function(thing) {
-    thing.id = function() {
-        return id(this);
-    }
-    if(TAB) {
+    /*if(TAB) {
         try {
             TAB.onMessage.removeListener(onMessage);
         } catch{}
@@ -26,27 +70,26 @@ chrome.runtime.onConnect.addListener(function(thing) {
             TAB.disconnect();
         } catch {}
         console.log(`Disconnecting ${id(TAB)}`);
-    }
+    }*/
+    thing.id = id(thing);
+    thing.name = getName(thing);
     if(INFO.name === null) {
         thing.postMessage({type: "error", data: "Connection was not established to server. Retrying - reload page in a bit"});
         thing.disconnect();
         setup();
-        console.log(`Refused connection from ${thing.id()} due to invalid startup`)
+        console.log(`Refused connection from ${thing.id} due to invalid startup`)
         return;
     }
-    console.log(`Connecting to ${thing.id()}`);
+    console.log(thing);
+    console.log(`Connecting to ${thing.name}`);
+    PORTS[thing.id] = thing;
     thing.onMessage.addListener(onMessage);
     thing.onDisconnect.addListener(function(tab) {
-        console.log(`Disconnected from ${id(tab)}`);
-        if(id(tab) === id(TAB)) {
-            TAB = null;
-            clearInterval(processQueues);
-        }
-        
+        console.log(`Disconnected from ${getName(tab)}`);
+        delete PORTS[tab.id];
+        delete PORTS_WATCHING[tab.id];
     });
     thing.postMessage({type: "sendInfo", data: INFO});
-    TAB = thing;
-    setInterval(processQueues, 5000);
 });
 chrome.runtime.onMessage.addListener(onMessage);
 
@@ -67,6 +110,32 @@ function onMessage(message, sender, response) {
             SET_QUEUE[vId] = time;
             CACHE[vId] = {"t": vId, "w": Date.now()};
         }
+    } else if(message.type === "setWatching") {
+        var vidId = message.data;
+        if(vidId === null) {
+            delete PORTS_WATCHING[sender.id];
+            console.log(`${getName(sender)} has stopped watching any videos`);
+            return;
+        }
+        var alsoWatching = getPortAlreadyWatching(vidId);
+        console.log(alsoWatching);
+        if(alsoWatching) {
+            if(getName(alsoWatching) === getName(sender))
+                return;
+            sender.postMessage({type: "stop", data: {
+                log: `Video ${vidId} being watched by port ${getName(alsoWatching)}`,
+                display: "Video already being watched"
+            }});
+            var tab = alsoWatching.sender.tab;
+            var param = {
+                "tabs": tab.index,
+                "windowId": tab.windowId
+            };
+            chrome.tabs.highlight(param);
+        } else {
+            PORTS_WATCHING[sender.id] = vidId;
+            console.log(`${sender.name} now watching ${vidId}`);
+        }
     }
 }
 
@@ -79,16 +148,21 @@ async function setToken(token) {
     });
     try {
         var rText = await response.json();
+        console.log(rText);
         if(rText) {
             INFO.name = rText.name;
             INFO.id = rText.id;
+            INFO.interval = rText.interval;
+            chrome.storage.local.set({"token": INFO.token}, function() {
+                console.log("Set token!");
+            });
         } else {
             INFO.name = null;
             INFO.id = null;
+            INFO.interval = {set: 15000, get: 5000};
         }
         console.log(`Loaded token, logged in as ${INFO.name}`);
-        if(TAB)
-            TAB.postMessage({type: "sendInfo", data: INFO});
+        postMessage({type: "sendInfo", data: INFO});
     } catch(e) {
         console.log("Failed to login using token.");
         console.error(e);
@@ -141,22 +215,28 @@ async function setTimes(timesObject) {
     return {};
 }
 
-function processQueues() {
-    if(TAB === null)
+
+function processGetQueue() {
+    if(getObjectLength(PORTS) === 0)
         return;
     if(GET_QUEUE.length > 0) {
         var q = GET_QUEUE;
         GET_QUEUE = [];
         getTimes(q).then(function(times) {
             console.log("Gotten times! Sending...");
-            TAB.postMessage({"type": "gotTimes", data: times});
+            postMessage({"type": "gotTimes", data: times});
         });
     }
+}
+function processSetQueue() {
+    if(getObjectLength(PORTS) === 0)
+        return;
     if(getObjectLength(SET_QUEUE) > 0) {
+        console.log(`Sending queue of ${getObjectLength(SET_QUEUE)} items`);
         var q = SET_QUEUE;
         SET_QUEUE = {}
         setTimes(q).then(function(saved) {
-            TAB.postMessage({type: "savedTime", data: saved});
+            postMessage({type: "savedTime", data: saved});
         });
     }
 }
@@ -164,6 +244,8 @@ function processQueues() {
 async function setup() {
     chrome.storage.local.get(["token"], async function(result) {
         await setToken(result.token);
+        setInterval(processGetQueue, INFO.interval.get);
+        setInterval(processSetQueue, INFO.interval.set);
     });
 }
 setup();

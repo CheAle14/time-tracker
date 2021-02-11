@@ -2,6 +2,8 @@ console.warn("Content script loaded!")
 var port = chrome.runtime.connect();
 var CONNECTED = true;
 var LOADED = false;
+var HALTED = false;
+
 console.log("Connected to port");
 port.onMessage.addListener(function(message, sender, response) {
     console.log(message);
@@ -12,13 +14,24 @@ port.onMessage.addListener(function(message, sender, response) {
         setTimes();
     } else if (message.type === "error") {
         console.error(message.data);
-    } else if(message.type === "savedTime") {
+        HALTED = true;
+    } else if(message.type === "savedTime" && HALTED === false) {
         for(let id in message.data) {
             if(id === WATCHING) {
                 console.log(`Saved up to ${message.data[id]}`);
                 getVideoTxt().innerText = toTime(message.data[id]);
             }
         }
+    } else if(message.type === "stop") {
+        LOADED = true;
+        HALTED = true;
+        console.warn(`Stopping video playback due to instruction: ${message.data.log}`);
+        try {
+            VIDEO.pause();
+            var txt = getVideoTxt();
+            txt.innerText = "Halted: " + message.data.display;
+            txt.style.color = "red";
+        } catch {}
     }
 });
 port.onDisconnect.addListener(function() {
@@ -202,6 +215,8 @@ function boot() {
         VIDEO.onpause = function() {
             if(LOADED === false)
                 return false;
+            if(HALTED)
+                return;
             console.log("Video play stopped.");
             if(CONNECTED)
                 saveTime();
@@ -209,6 +224,11 @@ function boot() {
             getVideoTxt().innerText += " | Paused";
         };
         VIDEO.onplay = function() {
+            if(HALTED) {
+                VIDEO.pause();
+                VIDEO.currentTime = CACHE[WATCHING];
+                return;
+            }
             console.log("Video play started.");
             if(CONNECTED === false) {
                 VIDEO.pause();
@@ -219,6 +239,8 @@ function boot() {
             getVideoTxt().innerText = "Sync started...";
         };
         VIDEO.onended = function() {
+            if(HALTED)
+                return;
             saveTime();
             clearInterval(videoSync);
             getVideoTxt().innerText += " | Ended";
@@ -230,13 +252,18 @@ function boot() {
 }
 
 function saveTime() {
+    if(HALTED) {
+        VIDEO.pause();
+        VIDEO.pause();
+        VIDEO.currentTime = CACHE[WATCHING];
+    }
     thing = {};
     thing[WATCHING] = VIDEO.currentTime;
     port.postMessage({type: "setTime", data: thing});
 }
 
 function videoSync() {
-    if(VIDEO.paused)
+    if(VIDEO.paused || HALTED)
         return;
     saveTime();
 
@@ -247,11 +274,18 @@ setInterval(function() {
     if(tofetch.length > 0)
         port.postMessage({type: "getTimes", data: tofetch});
 }, 5000);
+
 setInterval(function() {
     var w = getId();
     if(WATCHING !== w) {
         WATCHING = w;
-        console.log(`Now watching ${w}`);
-        boot();
+        if(w) {
+            LOADED = false;
+            console.log(`Now watching ${w}`);
+            port.postMessage({type: "setWatching", data: WATCHING});
+            boot();
+        } else {
+            console.log(`Stopped watching video`);
+        }
     }
 }, 500);
