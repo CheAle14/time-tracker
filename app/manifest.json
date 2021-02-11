@@ -9,14 +9,15 @@
         "webNavigation"
     ],
     "manifest_version": 2,
-    "browser_action": {"default_title": "Thing"},
+    "browser_action": {"default_title": "Thing", "default_popup": "popup.html"},
     "content_scripts": [
         {
             "matches": [
                 "https://youtube.com/*",
                 "https://*.youtube.com/*"
             ],
-            "js": ["contentScript.js"]
+            "js": ["toast/toast.js", "contentScript.js"],
+            "css": ["toast/toast.css"]
         }
     ],
     "background": {

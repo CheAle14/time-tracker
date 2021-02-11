@@ -1,6 +1,6 @@
-chrome.browserAction.onClicked.addListener(function(tab) {
+/*chrome.browserAction.onClicked.addListener(function(tab) {
     chrome.tabs.create({url: "popup.html"})
-});
+});*/
 
 /*var _oldLog = console.log;
 console.log = function(str) {
@@ -32,10 +32,10 @@ function postMessage(message) {
 }
 
 function id(_tab) {
-    return _tab.sender.tab.id;
+    return _tab.sender.tab ? _tab.sender.tab.id : 0;
 }
 function getName(_tab) {
-    return `${id(_tab)} @ ${_tab.sender.url}`;
+    return _tab.sender.tab ? `${id(_tab)} @ ${_tab.sender.url}` : "popup @ " + _tab.sender.url;
 }
 function getWatchingId(url) {
     url = url;
@@ -71,6 +71,7 @@ chrome.runtime.onConnect.addListener(function(thing) {
         } catch {}
         console.log(`Disconnecting ${id(TAB)}`);
     }*/
+    console.log(thing);
     thing.id = id(thing);
     thing.name = getName(thing);
     if(INFO.name === null) {
@@ -108,7 +109,7 @@ function onMessage(message, sender, response) {
             var time = message.data[vId];
             console.log(`Queued ${vId} to set ${time}`);
             SET_QUEUE[vId] = time;
-            CACHE[vId] = {"t": vId, "w": Date.now()};
+            CACHE[vId] = {"t": time, "w": Date.now()};
         }
     } else if(message.type === "setWatching") {
         var vidId = message.data;
@@ -135,6 +136,22 @@ function onMessage(message, sender, response) {
         } else {
             PORTS_WATCHING[sender.id] = vidId;
             console.log(`${sender.name} now watching ${vidId}`);
+        }
+    } else if(message.type === "getData") {
+        sender.postMessage({type: "sendData", data: {
+            "info": INFO,
+            "cache": CACHE,
+            "ports": PORTS,
+            "watching": PORTS_WATCHING
+        }});
+    } else if(message.type === "highlightTab") {
+        var port = PORTS[message.data];
+        if(port) {
+            var tab = port.sender.tab;
+            chrome.tabs.highlight({
+                "tabs": tab.index,
+                "windowId": tab.windowId
+            });
         }
     }
 }

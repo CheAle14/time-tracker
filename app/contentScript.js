@@ -4,6 +4,9 @@ var CONNECTED = true;
 var LOADED = false;
 var HALTED = false;
 
+var fetchingToast = null;
+var watchingToast = null;
+
 console.log("Connected to port");
 port.onMessage.addListener(function(message, sender, response) {
     console.log(message);
@@ -41,6 +44,15 @@ port.onDisconnect.addListener(function() {
         VIDEO.pause();
         getVideoTxt().innerText = "!! Disconnected !!";
     }
+    Toastify({
+        text: "Disconnected from backend server - syncing cannot occur; video paused",
+        duration: 10000,
+        close: true,
+        gravity: "top", // `top` or `bottom`
+        position: "right", // `left`, `center` or `right`
+        backgroundColor: "red",
+        stopOnFocus: true, // Prevents dismissing of toast on hover
+    }).showToast();
 })
 const CACHE = {}
 var WATCHING = null;
@@ -187,6 +199,14 @@ function setTimes() {
             VIDEO.currentTime = data;
             getVideoTxt().innerText = toTime(data);
             LOADED = true;
+            if(fetchingToast) {
+                fetchingToast.hideToast();
+                fetchingToast = null;
+            }
+            if(watchingToast) {
+                watchingToast.hideToast();
+                watchingToast = null;
+            }
             if(VIDEO.paused)
                 VIDEO.play();
         }
@@ -194,6 +214,9 @@ function setTimes() {
 
     if(mustFetch.length > 0) {
         port.postMessage({type: "getTimes", data: mustFetch});
+        if(fetchingToast) {
+            fetchingToast.toastElement.innerText = `Fetching ${mustFetch.length} more thumbnails`;
+        }
     }
 }
 
@@ -271,8 +294,26 @@ function videoSync() {
 
 setInterval(function() {
     var tofetch = setThumbnails();
-    if(tofetch.length > 0)
+    if(tofetch.length > 0) {
         port.postMessage({type: "getTimes", data: tofetch});
+        if(fetchingToast) {
+            fetchingToast.toastElement.innerText = `Fetching ${tofetch.length} thumbnails..`;
+        } else {
+            fetchingToast = Toastify({
+                text: `Fetching ${tofetch.length} thumbnails..`,
+                duration: -1,
+                close: true,
+                gravity: "top", // `top` or `bottom`
+                position: "right", // `left`, `center` or `right`
+                backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
+                stopOnFocus: true, // Prevents dismissing of toast on hover
+                onClick: function(){} // Callback after click
+            }).showToast();
+        }
+    } else if(fetchingToast) {
+        fetchingToast.hideToast();
+        fetchingToast = null;
+    }
 }, 5000);
 
 setInterval(function() {
@@ -283,6 +324,20 @@ setInterval(function() {
             LOADED = false;
             console.log(`Now watching ${w}`);
             port.postMessage({type: "setWatching", data: WATCHING});
+            if(watchingToast) {
+                watchingToast.toastElement.innerText = "Fetching video saved time..";
+            } else {
+                watchingToast = Toastify({
+                    text: `Fetching video saved time..`,
+                    duration: -1,
+                    close: true,
+                    gravity: "top", // `top` or `bottom`
+                    position: "right", // `left`, `center` or `right`
+                    backgroundColor: "linear-gradient(to right, red, blue)",
+                    stopOnFocus: true, // Prevents dismissing of toast on hover
+                    onClick: function(){} // Callback after click
+                }).showToast();
+            }
             boot();
         } else {
             console.log(`Stopped watching video`);
