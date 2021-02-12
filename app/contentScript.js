@@ -249,7 +249,12 @@ function boot() {
         VIDEO.onplay = function() {
             if(HALTED) {
                 VIDEO.pause();
-                VIDEO.currentTime = CACHE[WATCHING];
+                VIDEO.currentTime = CACHE[WATCHING] ?? 0;
+                return;
+            }
+            if(LOADED === false) {
+                VIDEO.pause();
+                VIDEO.currentTime = CACHE[WATCHING] ?? 0;
                 return;
             }
             console.log("Video play started.");
@@ -278,7 +283,7 @@ function saveTime() {
     if(HALTED) {
         VIDEO.pause();
         VIDEO.pause();
-        VIDEO.currentTime = CACHE[WATCHING];
+        VIDEO.currentTime = CACHE[WATCHING] ?? 0;
     }
     thing = {};
     thing[WATCHING] = VIDEO.currentTime;
