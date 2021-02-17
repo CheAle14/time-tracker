@@ -30,7 +30,7 @@ port.onMessage.addListener(function(message, sender, response) {
         HALTED = true;
         console.warn(`Stopping video playback due to instruction: ${message.data.log}`);
         try {
-            VIDEO.pause();
+            pause();
             var txt = getVideoTxt();
             txt.innerText = "Halted: " + message.data.display;
             txt.style.color = "red";
@@ -40,8 +40,8 @@ port.onMessage.addListener(function(message, sender, response) {
 port.onDisconnect.addListener(function() {
     console.warn("Disconnected from port.");
     CONNECTED = false;
-    if(VIDEO) {
-        VIDEO.pause();
+    if(getVideo()) {
+        pause();
         getVideoTxt().innerText = "!! Disconnected !!";
     }
     Toastify({
@@ -56,7 +56,6 @@ port.onDisconnect.addListener(function() {
 })
 const CACHE = {}
 var WATCHING = null;
-var VIDEO = null;
 console.log(window.location);
 var IS_MOBILE = window.location.hostname.startsWith("m.");
 
@@ -156,9 +155,15 @@ function setThumbnails() {
     var thumbNails = getThumbnails();
     for(const i in thumbNails) {
         var element = thumbNails[i];
-        if(element.nodeName !== "SPAN")
-            continue;
-        var state = element.getAttribute("mlapi-done") ?? "unfetched";
+        if(IS_MOBILE) {
+            if(element.nodeName !== "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER") {
+                continue;
+            }
+        } else {
+            if(element.nodeName !== "SPAN")
+                continue;
+        }
+        var state = element.getAttribute("mlapi-done") || "unfetched";
         if(state === "fetched")
             continue;
         var anchor = element.parentElement.parentElement.parentElement;
@@ -171,10 +176,14 @@ function setThumbnails() {
                 if(perc >= 0.9) {
                     element.innerText = "✔️ " + element.innerText;
                     element.style.color = "green";
+                    if(IS_MOBILE)
+                        element.style.backgroundColor = "white";
                 } else if(perc > 0) {
                     var remaining = vidLength - time;
                     element.innerText = toTime(remaining);
                     element.style.color = "orange";
+                    if(IS_MOBILE)
+                        element.style.backgroundColor = "blue";
                 }
                 CACHE[id] = time;
                 element.setAttribute("mlapi-done", "fetched")
@@ -196,7 +205,7 @@ function setTimes() {
     if(WATCHING !== null && LOADED === false) {
         var data = CACHE[WATCHING];
         if(data !== null) {
-            VIDEO.currentTime = data;
+            getVideo().currentTime = data;
             getVideoTxt().innerText = toTime(data);
             LOADED = true;
             if(fetchingToast) {
@@ -207,8 +216,8 @@ function setTimes() {
                 watchingToast.hideToast();
                 watchingToast = null;
             }
-            if(VIDEO.paused)
-                VIDEO.play();
+            if(getVideo().paused)
+                play();
         }
     }
 
@@ -230,12 +239,21 @@ function getThumbnailFor(id) {
     return null;
 }
 
-function boot() {
-    WATCHING = getId();
-    if(WATCHING) {
-        console.log(`Loaded watching ${WATCHING}`);
-        VIDEO = getVideo();
-        VIDEO.onpause = function() {
+function pause() {
+    getVideo().pause();
+    if(IS_MOBILE) {
+        addVideoListeners();
+    }
+}
+function play() {
+    getVideo().play();
+    if(IS_MOBILE) {
+        addVideoListeners();
+    }
+}
+
+function addVideoListeners() {
+        getVideo().onpause = function() {
             if(LOADED === false)
                 return false;
             if(HALTED)
@@ -246,34 +264,42 @@ function boot() {
             clearInterval(videoSync);
             getVideoTxt().innerText += " | Paused";
         };
-        VIDEO.onplay = function() {
+        getVideo().onplay = function() {
             if(HALTED) {
-                VIDEO.pause();
-                VIDEO.currentTime = CACHE[WATCHING] ?? 0;
+                pause();
+                getVideo().currentTime = CACHE[WATCHING] || 0;
                 return;
             }
             if(LOADED === false) {
-                VIDEO.pause();
-                VIDEO.currentTime = CACHE[WATCHING] ?? 0;
+                pause();
+                getVideo().currentTime = CACHE[WATCHING] || 0;
                 return;
             }
             console.log("Video play started.");
             if(CONNECTED === false) {
-                VIDEO.pause();
+                pause();
                 console.error("Cannot play video: not syncing");
                 return;
             }
             setInterval(videoSync, 1000);
             getVideoTxt().innerText = "Sync started...";
         };
-        VIDEO.onended = function() {
+        getVideo().onended = function() {
             if(HALTED)
                 return;
             saveTime();
             clearInterval(videoSync);
             getVideoTxt().innerText += " | Ended";
         }
-        VIDEO.pause();
+}
+
+function boot() {
+    WATCHING = getId();
+    if(WATCHING) {
+        console.log(`Loaded watching ${WATCHING}`);
+        pause();
+        if(IS_MOBILE === false)
+            addVideoListeners();
         getVideoTxt().innerText = "Fetching...";
         port.postMessage({type: "getTimes", data: [WATCHING]});
     }
@@ -281,24 +307,25 @@ function boot() {
 
 function saveTime() {
     if(HALTED) {
-        VIDEO.pause();
-        VIDEO.pause();
-        VIDEO.currentTime = CACHE[WATCHING] ?? 0;
+        pause();
+        pause();
+        getVideo().currentTime = CACHE[WATCHING] || 0;
     }
     thing = {};
-    thing[WATCHING] = VIDEO.currentTime;
+    thing[WATCHING] = getVideo().currentTime;
     port.postMessage({type: "setTime", data: thing});
 }
 
 function videoSync() {
-    if(VIDEO.paused || HALTED)
+    if(getVideo().paused || HALTED)
         return;
     saveTime();
-
 }
 
 setInterval(function() {
+    console.log("Starting loop check")
     var tofetch = setThumbnails();
+    console.log(tofetch);
     if(tofetch.length > 0) {
         port.postMessage({type: "getTimes", data: tofetch});
         if(fetchingToast) {
