@@ -1,12 +1,13 @@
 {
     "name": "Video Time Tracker",
     "description": "Tracks the time watched of videos, synced across devices",
-    "version": "0.6",
+    "version": "0.9",
     "permissions": [
         "storage",
         "activeTab",
         "tabs",
-        "webNavigation"
+        "webNavigation",
+        "alarms"
     ],
     "manifest_version": 2,
     "browser_action": {"default_title": "Thing", "default_popup": "popup.html"},

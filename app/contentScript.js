@@ -35,6 +35,19 @@ port.onMessage.addListener(function(message, sender, response) {
             txt.innerText = "Halted: " + message.data.display;
             txt.style.color = "red";
         } catch {}
+    } else if(message.type === "update") {
+        Toastify({
+            text: `Update available: ${message.data}`,
+            duration: -1,
+            close: true,
+            gravity: "top", // `top` or `bottom`
+            position: "right", // `left`, `center` or `right`
+            backgroundColor: "red",
+            stopOnFocus: true, // Prevents dismissing of toast on hover
+            onClick: function() {
+                window.location.href = "https://github.com/CheAle14/time-tracker/releases/latest";
+            }
+        }).showToast();
     }
 });
 port.onDisconnect.addListener(function() {
@@ -46,7 +59,7 @@ port.onDisconnect.addListener(function() {
     }
     Toastify({
         text: "Disconnected from backend server - syncing cannot occur; video paused",
-        duration: 10000,
+        duration: -1,
         close: true,
         gravity: "top", // `top` or `bottom`
         position: "right", // `left`, `center` or `right`
@@ -76,7 +89,6 @@ function getVideoTxt() {
         txt = document.createElement("span");
         return txt; // temp var for now.
     }
-    console.log(container);
     var sep = document.createElement("span");
     sep.classList.add(IS_MOBILE ? "time-delimiter" : "ytp-time-separator");
     sep.innerText = " -- ";
@@ -204,7 +216,7 @@ function setTimes() {
 
     if(WATCHING !== null && LOADED === false) {
         var data = CACHE[WATCHING];
-        if(data !== null) {
+        if(data !== null && data !== undefined) {
             getVideo().currentTime = data;
             getVideoTxt().innerText = toTime(data);
             LOADED = true;
@@ -246,51 +258,66 @@ function pause() {
     }
 }
 function play() {
-    getVideo().play();
-    if(IS_MOBILE) {
-        addVideoListeners();
+    var promise = getVideo().play();
+    if (promise !== undefined) {
+        promise.then(_ => {
+            // Autoplay started!
+        }).catch(error => {
+            Toastify({
+                text: `Video can be played!`,
+                duration: 5000,
+                close: true,
+                gravity: "top", // `top` or `bottom`
+                position: "right", // `left`, `center` or `right`
+                backgroundColor: "blue",
+                stopOnFocus: true, // Prevents dismissing of toast on hover
+                onClick: function(){} // Callback after click
+            }).showToast();
+        });
     }
 }
 
 function addVideoListeners() {
-        getVideo().onpause = function() {
-            if(LOADED === false)
-                return false;
-            if(HALTED)
-                return;
-            console.log("Video play stopped.");
-            if(CONNECTED)
-                saveTime();
-            clearInterval(videoSync);
-            getVideoTxt().innerText += " | Paused";
-        };
-        getVideo().onplay = function() {
-            if(HALTED) {
-                pause();
-                getVideo().currentTime = CACHE[WATCHING] || 0;
-                return;
-            }
-            if(LOADED === false) {
-                pause();
-                getVideo().currentTime = CACHE[WATCHING] || 0;
-                return;
-            }
-            console.log("Video play started.");
-            if(CONNECTED === false) {
-                pause();
-                console.error("Cannot play video: not syncing");
-                return;
-            }
-            setInterval(videoSync, 1000);
-            getVideoTxt().innerText = "Sync started...";
-        };
-        getVideo().onended = function() {
-            if(HALTED)
-                return;
+    var vid = getVideo();
+    vid.onpause = function() {
+        if(LOADED === false)
+            return false;
+        if(HALTED)
+            return;
+        console.log("Video play stopped.");
+        if(CONNECTED)
             saveTime();
-            clearInterval(videoSync);
-            getVideoTxt().innerText += " | Ended";
+        clearInterval(videoSync);
+        getVideoTxt().innerText += " | Paused";
+    };
+    vid.onplay = function() {
+        if(HALTED) {
+            pause();
+            getVideo().currentTime = CACHE[WATCHING] || 0;
+            return;
         }
+        if(LOADED === false) {
+            pause();
+            getVideo().currentTime = CACHE[WATCHING] || 0;
+            return;
+        }
+        console.log("Video play started.");
+        if(CONNECTED === false) {
+            pause();
+            console.error("Cannot play video: not syncing");
+            return;
+        }
+        setInterval(videoSync, 1000);
+        getVideoTxt().innerText = "Sync started...";
+    };
+    vid.onended = function() {
+        if(HALTED)
+            return;
+        saveTime();
+        clearInterval(videoSync);
+        getVideoTxt().innerText += " | Ended";
+    }
+    vid.setAttribute("mlapi-events", "true")
 }
 
 function boot() {
@@ -323,9 +350,7 @@ function videoSync() {
 }
 
 setInterval(function() {
-    console.log("Starting loop check")
     var tofetch = setThumbnails();
-    console.log(tofetch);
     if(tofetch.length > 0) {
         port.postMessage({type: "getTimes", data: tofetch});
         if(fetchingToast) {
@@ -373,6 +398,14 @@ setInterval(function() {
             boot();
         } else {
             console.log(`Stopped watching video`);
+        }
+    }
+    if(IS_MOBILE && WATCHING) {
+        if(getVideo().getAttribute("mlapi-events") != "true")
+            addVideoListeners();
+        if(HALTED || !LOADED) {
+            getVideo().pause();
+            getVideo().currentTime = CACHE[WATCHING] || 0;
         }
     }
 }, 500);
