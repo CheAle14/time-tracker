@@ -328,7 +328,7 @@ function boot() {
         if(IS_MOBILE === false)
             addVideoListeners();
         getVideoTxt().innerText = "Fetching...";
-        port.postMessage({type: "getTimes", data: [WATCHING]});
+        port.postMessage({type: "getTime", data: WATCHING});
     }
 }
 

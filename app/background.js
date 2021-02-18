@@ -19,11 +19,15 @@ console.log = function(str) {
 var INFO = {};
 var PORTS = {};
 var PORTS_WATCHING = {};
-var URL = "https://ml-api.uk.ms/api/tracker";
+var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" // ;
 var CACHE = {};
 var GET_QUEUE = [];
 var SET_QUEUE = {}
 var UP_TO_DATE = true;
+var QUEUE_IDS = {"get": 0, "set": 0};
+var WS = null;
+var WS_CALLBACK = {};
+var SEQUENCE = 0;
 console.log("Background started");
 
 function postMessage(message) {
@@ -72,6 +76,7 @@ chrome.runtime.onConnect.addListener(function(thing) {
         } catch {}
         console.log(`Disconnecting ${id(TAB)}`);
     }*/
+    startProcessQueues();
     console.log(thing);
     thing.id = id(thing);
     thing.name = getName(thing);
@@ -90,6 +95,10 @@ chrome.runtime.onConnect.addListener(function(thing) {
         console.log(`Disconnected from ${getName(tab)}`);
         delete PORTS[tab.id];
         delete PORTS_WATCHING[tab.id];
+        if(getObjectLength(PORTS) === 0) {
+            console.log("All ports closed; commanding intervals to halt");
+            STOP_QUEUE_NEXT = true;
+        }
     });
     thing.postMessage({type: "sendInfo", data: INFO});
     if(typeof UP_TO_DATE === "string") {
@@ -108,6 +117,11 @@ function onMessage(message, sender, response) {
                 GET_QUEUE.push(vId);
             }
         }
+    } else if(message.type === "getTime") {
+        // Allow getting by immediately bypassing queues, for fetching video id
+        getTimes([message.data], function(obj) {
+            postMessage({"type": "gotTimes", data: obj});
+        });
     } else if(message.type === "setTime") {
         for(const vId in message.data) {
             var time = message.data[vId];
@@ -160,6 +174,57 @@ function onMessage(message, sender, response) {
     }
 }
 
+var firstOpen = true;
+function wsOnOpen() {
+    console.log("WebSocket opened");
+    if(firstOpen) {
+        firstOpen = false;
+        checkVersion(null);
+    }
+}
+function wsOnClose(event) {
+    console.log("WebSocket disconnect", event);
+    postMessage({type: "stop", data: {
+        log: `WebSocket connection lost on backend`,
+        display: "Disconnected"
+    }});
+    setTimeout(function() {
+        console.log("Retrying WS connection");
+        startWs();
+    }, 5000);
+}
+function wsOnMessage(event) {
+    var packet = JSON.parse(event.data);
+    console.log("[WS] <<", packet);
+    var callback = WS_CALLBACK[packet.res];
+    callback(packet.content);
+    delete WS_CALLBACK[packet.res];
+}
+function sendPacket(packet, callback) {
+    packet.seq = SEQUENCE++;
+    console.log(`[WS] >>`, packet);
+    WS_CALLBACK[packet.seq] = callback;
+    WS.send(JSON.stringify(packet));
+}
+
+function startWs() {
+    var url = null;
+    if(URL.startsWith("https")) {
+        url = "wss://ml-api.uk.ms/time-tracker"
+    } else {
+        url = "ws://localhost:4650/time-tracker"
+    }
+    WS_CALLBACK = {};
+    console.log(`Starting WS connection to ${url}`);
+    WS = new WebSocket(`${url}?session=${INFO.token}`);
+    WS.onopen = wsOnOpen;
+    WS.onclose = wsOnClose;
+    WS.onmessage = wsOnMessage;
+    WS.onerror = function(err) {
+        console.error(err);
+    }
+}
+
 async function setToken(token) {
     INFO.token = token;
     var response = await fetch(`${URL}/user`, {
@@ -177,6 +242,7 @@ async function setToken(token) {
             chrome.storage.local.set({"token": INFO.token}, function() {
                 console.log("Set token!");
             });
+            startWs();
         } else {
             INFO.name = null;
             INFO.id = null;
@@ -190,8 +256,8 @@ async function setToken(token) {
     }
 }
 
-async function getTimes(timesObject) {
-    query = "";
+function getTimes(timesObject, callback) {
+    query = [];
     var respJson = {};
     for(let key of timesObject) {
         if(key in CACHE) {
@@ -204,99 +270,111 @@ async function getTimes(timesObject) {
                 continue;
             }
         }
-        query += encodeURI(key) + ",";
+        query.push(key);
     }
-    if(query.length === 0) // shortcut, don't bother.
-        return respJson;
-    var response = await fetch(`${URL}/times?ids=${query}`, {
-        "headers": {
-            "X-SESSION": INFO.token
+    if(query.length === 0) {
+        callback(respJson);
+        return;
+    }
+    sendPacket({
+        id: "GetTimes",
+        content: query,
+    }, function(response) {
+        console.log("Got callback:", response);
+        for(let vId in response) {
+            CACHE[vId] = {"t": response[vId], "w": Date.now()};
         }
+        callback(response);
     });
-    console.log(response);
-    respJson = await response.json();
-    for(const key in respJson) {
-        CACHE[key] = {t: respJson[key], w: Date.now()};
-    }
-    return respJson;
 }
 
-async function setTimes(timesObject) {
+async function setTimes(timesObject, callback) {
     console.log(timesObject);
-    var response = await fetch(`${URL}/times`, {
-        "headers": {
-            "X-SESSION": INFO.token
-        },
-        method: "POST",
-        body: JSON.stringify(timesObject)
-    });
-    console.log(response);
-    if(response.ok)
-        return timesObject;
-    return {};
+    sendPacket({
+        id: "SetTimes",
+        content: timesObject
+    }, function(respContent) {
+        console.log(`Set times: ${respContent}`);
+        callback(timesObject);
+    })
 }
 
 
 function processGetQueue() {
-    if(getObjectLength(PORTS) === 0)
-        return;
     if(GET_QUEUE.length > 0) {
         var q = GET_QUEUE;
         GET_QUEUE = [];
-        getTimes(q).then(function(times) {
-            console.log("Gotten times! Sending...");
+        getTimes(q, function(times) {
+            console.log("Gotten times! Sending... ");
             postMessage({"type": "gotTimes", data: times});
         });
     }
+    if(STOP_QUEUE_NEXT) {
+        clearInterval(QUEUE_IDS.get);
+        console.log("Get queue ceased")
+    }
 }
 function processSetQueue() {
-    if(getObjectLength(PORTS) === 0)
-        return;
     if(getObjectLength(SET_QUEUE) > 0) {
         console.log(`Sending queue of ${getObjectLength(SET_QUEUE)} items`);
         var q = SET_QUEUE;
         SET_QUEUE = {}
-        setTimes(q).then(function(saved) {
+        setTimes(q, function(saved) {
             postMessage({type: "savedTime", data: saved});
         });
+    }
+    if(STOP_QUEUE_NEXT) {
+        clearInterval(QUEUE_IDS.set);
+        console.log("Set queue ceased");
     }
 }
 
 async function checkVersion(alarm) {
-    if(alarm.name !== "versionCheck")
-    console.log(alarm);
-    var response = await fetch(`${URL}/latestVersion`, {
-        "headers": {
-            "X-SESSION": INFO.token
+    sendPacket({
+        id: "GetVersion",
+        content: null
+    }, function(webVersion) {
+        var manifest = chrome.runtime.getManifest();
+        console.log(manifest);
+        console.log(webVersion);
+        var selfVersion = manifest.version;
+        var compare = versionCompare(selfVersion, webVersion);
+        if(compare === 0) {
+            console.log("Running latest version");
+        } else if (compare > 0) {
+            console.log("Running newer version")
+        } else if(compare < 0) {
+            console.warn("Running older version")
+            UP_TO_DATE = webVersion;
+            for(let portId in PORTS) {
+                var port = PORTS[portId];
+                port.postMessage({type: "update", data: UP_TO_DATE});
+            }
         }
     });
-    var webVersion = await response.text();
-    var manifest = chrome.runtime.getManifest();
-    console.log(manifest);
-    console.log(webVersion);
-    var selfVersion = manifest.version;
-    var compare = versionCompare(selfVersion, webVersion);
-    if(compare === 0) {
-        console.log("Running latest version");
-    } else if (compare > 0) {
-        console.log("Running newer version")
-    } else if(compare < 0) {
-        console.warn("Running older version")
-        UP_TO_DATE = webVersion;
-        for(let portId in PORTS) {
-            var port = PORTS[portId];
-            port.postMessage({type: "update", data: UP_TO_DATE});
-        }
+}
+
+async function alarmRaised(alarm) {
+    if(alarm.name === "versionCheck") {
+        checkVersion(alarm);
     }
 }
+
+function startProcessQueues() {
+    STOP_QUEUE_NEXT = false;
+    clearInterval(QUEUE_IDS.get);
+    clearInterval(QUEUE_IDS.set);
+    QUEUE_IDS.get = setInterval(processGetQueue, INFO.interval.get);
+    QUEUE_IDS.set = setInterval(processSetQueue, INFO.interval.set);
+}
+
+
 
 async function setup() {
     chrome.storage.local.get(["token"], async function(result) {
         await setToken(result.token);
-        setInterval(processGetQueue, INFO.interval.get);
-        setInterval(processSetQueue, INFO.interval.set);
     });
-    chrome.alarms.onAlarm.addListener(checkVersion);
+    chrome.alarms.onAlarm.addListener(alarmRaised);
     chrome.alarms.get("versionCheck", function(alarm) {
         if(!alarm) {
             chrome.alarms.create("versionCheck", {
