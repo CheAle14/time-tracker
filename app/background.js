@@ -300,7 +300,7 @@ async function setup() {
     chrome.alarms.get("versionCheck", function(alarm) {
         if(!alarm) {
             chrome.alarms.create("versionCheck", {
-                delayInMinutes: 0.1 // 24 hours
+                periodInMinutes: 1440 // 24 hours
             });
         }
     });

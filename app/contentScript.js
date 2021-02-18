@@ -37,7 +37,7 @@ port.onMessage.addListener(function(message, sender, response) {
         } catch {}
     } else if(message.type === "update") {
         Toastify({
-            text: `Update available: ${message.data}`,
+            text: `Update available: ${message.data}; click to go to github`,
             duration: -1,
             close: true,
             gravity: "top", // `top` or `bottom`
