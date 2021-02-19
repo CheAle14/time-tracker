@@ -27,7 +27,9 @@ var UP_TO_DATE = true;
 var QUEUE_IDS = {"get": 0, "set": 0};
 var WS = null;
 var WS_CALLBACK = {};
+var WS_FAILED = 0;
 var SEQUENCE = 0;
+const CACHE_TIMEOUT = 15000;
 console.log("Background started");
 
 function postMessage(message) {
@@ -108,24 +110,31 @@ chrome.runtime.onConnect.addListener(function(thing) {
 chrome.runtime.onMessage.addListener(onMessage);
 
 function onMessage(message, sender, response) {
-    console.log(message);
+    console.debug(`[${id(sender)}] << `, message);
     if(message.type === "setToken") {
         setToken(message.data);
     } else if(message.type === "getTimes") {
+        var instantResponse = {};
         for(const vId of message.data) {
             if(!(vId in GET_QUEUE)) {
+                var cached = CACHE[vId];
+                if(cached) {
+                    var diff = Date.now() - cached.w;
+                    if(diff < CACHE_TIMEOUT) {
+                        console.debug(`get: Found ${vId} in cache, out of date by ${diff}ms`);
+                        instantResponse[vId] = cached.t;
+                        continue;
+                    }
+                }
                 GET_QUEUE.push(vId);
             }
         }
-    } else if(message.type === "getTime") {
-        // Allow getting by immediately bypassing queues, for fetching video id
-        getTimes([message.data], function(obj) {
-            postMessage({"type": "gotTimes", data: obj});
-        });
+        if(getObjectLength(instantResponse) > 0) {
+            postMessage({"type": "gotTimes", data: instantResponse});
+        }
     } else if(message.type === "setTime") {
         for(const vId in message.data) {
             var time = message.data[vId];
-            console.log(`Queued ${vId} to set ${time}`);
             SET_QUEUE[vId] = time;
             CACHE[vId] = {"t": time, "w": Date.now()};
         }
@@ -137,7 +146,6 @@ function onMessage(message, sender, response) {
             return;
         }
         var alsoWatching = getPortAlreadyWatching(vidId);
-        console.log(alsoWatching);
         if(alsoWatching) {
             if(getName(alsoWatching) === getName(sender))
                 return;
@@ -154,6 +162,9 @@ function onMessage(message, sender, response) {
         } else {
             PORTS_WATCHING[sender.id] = vidId;
             console.log(`${sender.name} now watching ${vidId}`);
+            getTimes([message.data], function(obj) {
+                postMessage({"type": "gotTimes", data: obj});
+            }); // Immediately begin fetching video time to save load times
         }
     } else if(message.type === "getData") {
         sender.postMessage({type: "sendData", data: {
@@ -176,24 +187,30 @@ function onMessage(message, sender, response) {
 
 var firstOpen = true;
 function wsOnOpen() {
-    console.log("WebSocket opened");
+    console.log("[WS] Open(ed|ing) connection");
     if(firstOpen) {
         firstOpen = false;
         checkVersion(null);
     }
 }
 function wsOnClose(event) {
-    console.log("WebSocket disconnect", event);
-    postMessage({type: "stop", data: {
-        log: `WebSocket connection lost on backend`,
-        display: "Disconnected"
-    }});
-    setTimeout(function() {
-        console.log("Retrying WS connection");
-        startWs();
-    }, 5000);
+    console.log("[WS] Disconnected ", event);
+    if(WS_FAILED > 4) {
+        postMessage({type: "stop", data: {
+            log: `WebSocket connection lost on backend, attempted to retry ${WS_FAILED} times`,
+            display: "Disconnected"
+        }});
+    }
+    if(!event.wasClean) {
+        WS_FAILED++;
+        setTimeout(function() {
+            console.log("[WS] Retrying connection...]");
+            startWs();
+        }, 5000 + (1000 * WS_FAILED));
+    }
 }
 function wsOnMessage(event) {
+    WS_FAILED = 0;
     var packet = JSON.parse(event.data);
     console.log("[WS] <<", packet);
     var callback = WS_CALLBACK[packet.res];
@@ -221,7 +238,7 @@ function startWs() {
     WS.onclose = wsOnClose;
     WS.onmessage = wsOnMessage;
     WS.onerror = function(err) {
-        console.error(err);
+        console.error("[WS]", err);
     }
 }
 
@@ -265,7 +282,8 @@ function getTimes(timesObject, callback) {
             var time = cachedData.t;
             var cachedAt = cachedData.w;
             var diff = Date.now() - cachedAt;
-            if(diff < 10000) {
+            if(diff < CACHE_TIMEOUT) {
+                console.debug(`GET: Found ${key} in cache, out of date by ${diff}ms`);
                 respJson[key] = time;
                 continue;
             }

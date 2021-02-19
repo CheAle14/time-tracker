@@ -52,13 +52,14 @@ port.onMessage.addListener(function(message, sender, response) {
 });
 port.onDisconnect.addListener(function() {
     console.warn("Disconnected from port.");
+    HALTED = true;
     CONNECTED = false;
     if(getVideo()) {
         pause();
         getVideoTxt().innerText = "!! Disconnected !!";
     }
     Toastify({
-        text: "Disconnected from backend server - syncing cannot occur; video paused",
+        text: "Disconnected from backend server; reloading...",
         duration: -1,
         close: true,
         gravity: "top", // `top` or `bottom`
@@ -66,6 +67,9 @@ port.onDisconnect.addListener(function() {
         backgroundColor: "red",
         stopOnFocus: true, // Prevents dismissing of toast on hover
     }).showToast();
+    setTimeout(function() {
+        window.location.reload();
+    }, 5000);
 })
 const CACHE = {}
 var WATCHING = null;
@@ -328,7 +332,6 @@ function boot() {
         if(IS_MOBILE === false)
             addVideoListeners();
         getVideoTxt().innerText = "Fetching...";
-        port.postMessage({type: "getTime", data: WATCHING});
     }
 }
 
