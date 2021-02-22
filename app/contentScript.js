@@ -6,6 +6,26 @@ var HALTED = false;
 var CALLBACKS = {};
 var SEQUENCE = 0;
 
+const vidToolTip = {
+    SavedTime: null,
+    Paused: false,
+    Ended: false,
+    ErrorText: null,
+    Style: {},
+    ToText: function() {
+        var s = "";
+        if(this.SavedTime)
+            s = this.SavedTime;
+        if(this.ErrorText)
+            s += " " + this.ErrorText;
+        else if (this.Ended)
+            s += " | Ended";
+        else if(this.Paused)
+            s += " (P)";
+        return s;
+    }
+}
+
 var fetchingToast = null;
 var watchingToast = null;
 
@@ -33,7 +53,7 @@ port.onMessage.addListener(function(message, sender, response) {
         for(let id in message.data) {
             if(id === WATCHING) {
                 console.log(`Saved up to ${message.data[id]}`);
-                getVideoTxt().innerText = toTime(message.data[id]);
+                vidToolTip.SavedTime = toTime(message.data[id]);
             }
         }
     } else if(message.type === "stop") {
@@ -42,9 +62,8 @@ port.onMessage.addListener(function(message, sender, response) {
         console.warn(`Stopping video playback due to instruction: ${message.data.log}`);
         try {
             pause();
-            var txt = getVideoTxt();
-            txt.innerText = "Halted: " + message.data.display;
-            txt.style.color = "red";
+            vidToolTip.ErrorText = message.data.display;
+            vidToolTip.Style.color = "red";
         } catch {}
     } else if(message.type === "update") {
         Toastify({
@@ -73,7 +92,7 @@ port.onDisconnect.addListener(function() {
     CONNECTED = false;
     if(getVideo()) {
         pause();
-        getVideoTxt().innerText = "!! Disconnected !!";
+        vidToolTip.ErrorText = "!! Disconnected !!";
     }
     Toastify({
         text: "Disconnected from backend server; reloading...",
@@ -92,6 +111,10 @@ const CACHE = {}
 var WATCHING = null;
 console.log(window.location);
 var IS_MOBILE = window.location.hostname.startsWith("m.");
+
+function isWatchingFullScreen() {
+    return WATCHING && (window.fullScreen || (window.innerWidth == screen.width && window.innerHeight == screen.height));
+}
 
 function getTxtContainer() {
     if(IS_MOBILE) {
@@ -257,7 +280,7 @@ function setTimes() {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
             getVideo().currentTime = data;
-            getVideoTxt().innerText = toTime(data);
+            vidToolTip.SavedTime = toTime(data);
             LOADED = true;
             if(fetchingToast) {
                 fetchingToast.hideToast();
@@ -327,7 +350,7 @@ function addVideoListeners() {
         if(CONNECTED)
             saveTime();
         clearInterval(videoSync);
-        getVideoTxt().innerText += " | Paused";
+        vidToolTip.Paused = true;
     };
     vid.onplay = function() {
         if(HALTED) {
@@ -347,14 +370,16 @@ function addVideoListeners() {
             return;
         }
         setInterval(videoSync, 1000);
-        getVideoTxt().innerText = "Sync started...";
+        vidToolTip.Paused = false;
+        vidToolTip.Ended = false;
+        vidToolTip.SavedTime = "Sync started...";
     };
     vid.onended = function() {
         if(HALTED)
             return;
         saveTime();
         clearInterval(videoSync);
-        getVideoTxt().innerText += " | Ended";
+        vidToolTip.Ended = true;
     }
     vid.setAttribute("mlapi-events", "true")
 }
@@ -366,7 +391,7 @@ function boot() {
         pause();
         if(IS_MOBILE === false)
             addVideoListeners();
-        getVideoTxt().innerText = "Fetching...";
+        vidToolTip.SavedTime = "Fetching...";
     }
 }
 
@@ -393,7 +418,7 @@ setInterval(function() {
         postMessage({type: "getTimes", data: tofetch});
         if(fetchingToast) {
             fetchingToast.toastElement.innerText = `Fetching ${tofetch.length} thumbnails..`;
-        } else {
+        } else if(!isWatchingFullScreen()) {
             fetchingToast = Toastify({
                 text: `Fetching ${tofetch.length} thumbnails..`,
                 duration: -1,
@@ -444,6 +469,15 @@ setInterval(function() {
         if(HALTED || !LOADED) {
             getVideo().pause();
             getVideo().currentTime = CACHE[WATCHING] || 0;
+        }
+    }
+    if(WATCHING) {
+        var a = getVideoTxt();
+        if(a) {
+            a.innerText = vidToolTip.ToText();
+            for(let key in vidToolTip.Style) {
+                a.style[key] = vidToolTip.Style[key];
+            }
         }
     }
 }, 500);
