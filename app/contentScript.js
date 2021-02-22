@@ -3,13 +3,24 @@ var port = chrome.runtime.connect();
 var CONNECTED = true;
 var LOADED = false;
 var HALTED = false;
+var CALLBACKS = {};
+var SEQUENCE = 0;
 
 var fetchingToast = null;
 var watchingToast = null;
 
+function postMessage(packet, callback) {
+    if(callback) {
+        packet.seq = SEQUENCE++;
+        CALLBACKS[packet.seq] = callback;
+    }
+    console.log(`[PORT] >>`, packet);
+    port.postMessage(packet);
+}
+
 console.log("Connected to port");
 port.onMessage.addListener(function(message, sender, response) {
-    console.log(message);
+    console.log("[PORT] <<", message);
     if(message.type === "gotTimes") {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
@@ -49,9 +60,15 @@ port.onMessage.addListener(function(message, sender, response) {
             }
         }).showToast();
     }
+    if(message.res) {
+        var cb = CALLBACKS[message.res]
+        delete CALLBACKS[message.res]
+        console.log(`[PORT] Invoking callback handler for ${message.res}`);
+        cb(message);
+    }
 });
 port.onDisconnect.addListener(function() {
-    console.warn("Disconnected from port.");
+    console.warn("Disconnected from ");
     HALTED = true;
     CONNECTED = false;
     if(getVideo()) {
@@ -179,36 +196,54 @@ function setThumbnails() {
             if(element.nodeName !== "SPAN")
                 continue;
         }
-        var state = element.getAttribute("mlapi-done") || "unfetched";
-        if(state === "fetched")
-            continue;
         var anchor = element.parentElement.parentElement.parentElement;
         var id = getId(anchor.href);
-        if(id) {
-            if(id in CACHE) {
-                var time = CACHE[id];
-                var vidLength = parseToSeconds(element.innerText);
-                var perc = time / vidLength;
-                if(perc >= 0.9) {
-                    element.innerText = "✔️ " + element.innerText;
-                    element.style.color = "green";
-                    if(IS_MOBILE)
-                        element.style.backgroundColor = "white";
-                } else if(perc > 0) {
-                    var remaining = vidLength - time;
-                    element.innerText = toTime(remaining);
-                    element.style.color = "orange";
-                    if(IS_MOBILE)
-                        element.style.backgroundColor = "blue";
-                }
-                CACHE[id] = time;
-                element.setAttribute("mlapi-done", "fetched")
+        if(!id)
+            continue;
+        var state = element.getAttribute("mlapi-state") || "unfetched";
+        if(state === "fetched") {
+            var doneAt = parseInt(element.getAttribute("mlapi-done"));
+            var diff = Date.now() - doneAt;
+            if(diff < 30000) {
+                continue;
+            }
+            delete CACHE[id];
+            state = "redoing";
+            element.setAttribute("mlapi-state", "redoing");
+        }
+        var vidLength = element.getAttribute("mlapi-vid-length");
+        if(!vidLength) {
+            vidLength = parseToSeconds(element.innerText);
+            element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
+        }
+        if(id in CACHE) {
+            var time = CACHE[id];
+            var perc = time / vidLength;
+            if(perc >= 0.9) {
+                element.innerText = `✔️ ${toTime(vidLength)}`;
+                element.style.color = "green";
+                if(IS_MOBILE)
+                    element.style.backgroundColor = "white";
+            } else if(perc > 0) {
+                var remaining = vidLength - time;
+                element.innerText = toTime(remaining);
+                element.style.color = "orange";
+                if(IS_MOBILE)
+                    element.style.backgroundColor = "blue";
             } else {
-                if(state === "fetching") {
-                } else {
-                    element.setAttribute("mlapi-done", "fetching");
-                    mustFetch.push(id);
-                }
+                element.innerText = toTime(vidLength);
+            }
+            CACHE[id] = time;
+            element.setAttribute("mlapi-state", "fetched")
+            element.setAttribute("mlapi-done", Date.now());
+        } else {
+            if(state === "fetching") {
+            } else {
+                element.setAttribute("mlapi-state", "fetching");
+                delete CACHE[id];
+                var prefix = element.innerText.startsWith("🔄") ? "🔃" : "🔄";
+                element.innerText = `${prefix} ${toTime(vidLength)}`;
+                mustFetch.push(id);
             }
         }
     }
@@ -238,7 +273,7 @@ function setTimes() {
     }
 
     if(mustFetch.length > 0) {
-        port.postMessage({type: "getTimes", data: mustFetch});
+        postMessage({type: "getTimes", data: mustFetch});
         if(fetchingToast) {
             fetchingToast.toastElement.innerText = `Fetching ${mustFetch.length} more thumbnails`;
         }
@@ -343,7 +378,7 @@ function saveTime() {
     }
     thing = {};
     thing[WATCHING] = getVideo().currentTime;
-    port.postMessage({type: "setTime", data: thing});
+    postMessage({type: "setTime", data: thing});
 }
 
 function videoSync() {
@@ -355,7 +390,7 @@ function videoSync() {
 setInterval(function() {
     var tofetch = setThumbnails();
     if(tofetch.length > 0) {
-        port.postMessage({type: "getTimes", data: tofetch});
+        postMessage({type: "getTimes", data: tofetch});
         if(fetchingToast) {
             fetchingToast.toastElement.innerText = `Fetching ${tofetch.length} thumbnails..`;
         } else {
@@ -374,7 +409,7 @@ setInterval(function() {
         fetchingToast.hideToast();
         fetchingToast = null;
     }
-}, 5000);
+}, 4000);
 
 setInterval(function() {
     var w = getId();
@@ -383,7 +418,7 @@ setInterval(function() {
         if(w) {
             LOADED = false;
             console.log(`Now watching ${w}`);
-            port.postMessage({type: "setWatching", data: WATCHING});
+            postMessage({type: "setWatching", data: WATCHING});
             if(watchingToast) {
                 watchingToast.toastElement.innerText = "Fetching video saved time..";
             } else {
