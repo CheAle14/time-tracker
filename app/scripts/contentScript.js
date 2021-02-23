@@ -28,6 +28,7 @@ const vidToolTip = {
 
 var fetchingToast = null;
 var watchingToast = null;
+var oldVideoState = null;
 
 function postMessage(packet, callback) {
     if(callback) {
@@ -56,15 +57,28 @@ port.onMessage.addListener(function(message, sender, response) {
                 vidToolTip.SavedTime = toTime(message.data[id]);
             }
         }
-    } else if(message.type === "stop") {
+    } else if(message.type === "setState") {
+        var state = new StatePacket(message.data.play, message.data.display, message.data.log);
+        console.log(state.log);
         LOADED = true;
-        HALTED = true;
-        console.warn(`Stopping video playback due to instruction: ${message.data.log}`);
-        try {
-            pause();
+        if(state.play) {
+            HALTED = false;
+            try {
+                if(oldVideoState)
+                    play();
+            } catch {}
+            vidToolTip.SavedTime = state.display;
+            vidToolTip.Style = {};
+            vidToolTip.ErrorText = null;
+        } else {
+            oldVideoState = !getVideo().paused;
+            HALTED = true;
+            try {
+                pause();
+            } catch {}
             vidToolTip.ErrorText = message.data.display;
             vidToolTip.Style.color = "red";
-        } catch {}
+        }
     } else if(message.type === "update") {
         Toastify({
             text: `Update available: ${message.data}; click to go to github`,
@@ -261,11 +275,12 @@ function setThumbnails() {
             element.setAttribute("mlapi-done", Date.now());
         } else {
             if(state === "fetching") {
-            } else {
-                element.setAttribute("mlapi-state", "fetching");
-                delete CACHE[id];
                 var prefix = element.innerText.startsWith("🔄") ? "🔃" : "🔄";
                 element.innerText = `${prefix} ${toTime(vidLength)}`;
+            } else {
+                element.setAttribute("mlapi-state", "fetching");
+                element.innerText = `🔄 ${toTime(vidLength)}`;
+                delete CACHE[id];
                 mustFetch.push(id);
             }
         }
@@ -475,9 +490,7 @@ setInterval(function() {
         var a = getVideoTxt();
         if(a) {
             a.innerText = vidToolTip.ToText();
-            for(let key in vidToolTip.Style) {
-                a.style[key] = vidToolTip.Style[key];
-            }
+            a.style = vidToolTip.Style;
         }
     }
 }, 500);

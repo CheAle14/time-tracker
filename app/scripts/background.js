@@ -149,10 +149,9 @@ function onMessage(message, sender, response) {
         if(alsoWatching) {
             if(getName(alsoWatching) === getName(sender))
                 return;
-            sender.postMessage({type: "stop", data: {
-                log: `Video ${vidId} being watched by port ${getName(alsoWatching)}`,
-                display: "Video already being watched"
-            }});
+            sender.postMessage(new StatePacket(false, 
+                "Video already being watched", 
+                `Video ${vidId} being watched by port ${getName(alsoWatching)}`));
             var tab = alsoWatching.sender.tab;
             var param = {
                 "tabs": tab.index,
@@ -196,23 +195,29 @@ function wsOnOpen() {
 function wsOnClose(event) {
     console.log("[WS] Disconnected ", event);
     if(WS_FAILED > 4) {
-        postMessage({type: "stop", data: {
-            log: `WebSocket connection lost on backend, attempted to retry ${WS_FAILED} times`,
-            display: "Disconnected"
-        }});
+        postMessage(new StatePacket(false,
+            "Disconnected from main server",
+            `WebSocket connection lost, attempted ${WS_FAILED} retries`));
     }
-    if(!event.wasClean) {
-        WS_FAILED++;
-        setTimeout(function() {
-            console.log("[WS] Retrying connection...]");
-            startWs();
-        }, 5000 + (1000 * WS_FAILED));
-    }
+    WS_FAILED++;
+    setTimeout(function() {
+        console.log("[WS] Retrying connection...]");
+        startWs();
+    }, 5000 + (1000 * WS_FAILED));
 }
 function wsOnMessage(event) {
-    WS_FAILED = 0;
+    if(WS_FAILED > 0) {
+        WS_FAILED = 0;
+        postMessage(new StatePacket(true, "Reconnected", "WebSocket connection restabilised"));
+    }
     var packet = JSON.parse(event.data);
     console.log("[WS] <<", packet);
+    if(packet.id === "DirectRatelimit") {
+        console.log(`Ratelimits updated`, packet.content);
+        INFO.interval = packet.content;
+        startProcessQueues(); // restarts intervals
+        return;
+    }
     var callback = WS_CALLBACK[packet.res];
     callback(packet.content);
     delete WS_CALLBACK[packet.res];
@@ -320,8 +325,7 @@ async function setTimes(timesObject, callback) {
 
 function processGetQueue() {
     if(GET_QUEUE.length > 0) {
-        var q = GET_QUEUE;
-        GET_QUEUE = [];
+        var q = GET_QUEUE.splice(0, 75);
         getTimes(q, function(times) {
             console.log("Gotten times! Sending... ");
             postMessage({"type": "gotTimes", data: times});
