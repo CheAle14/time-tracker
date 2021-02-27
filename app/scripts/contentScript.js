@@ -487,6 +487,9 @@ setInterval(function() {
         }
     }
     if(WATCHING) {
+        var v = getVideo();
+        if(IS_MOBILE && v.paused === false)
+            return;
         var a = getVideoTxt();
         if(a) {
             a.innerText = vidToolTip.ToText();
