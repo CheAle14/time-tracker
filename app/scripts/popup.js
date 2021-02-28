@@ -86,21 +86,23 @@ function setLatest(data) {
         var txt = document.createElement("span");
         var when = "";
         var diff = Date.now() - vidData.when;
+        diff = diff / 1000; // convert ms -> s;
         if(diff > (3600 * 24)) {
             var d = new Date(vidData.when);
             console.log(d);
             when = `on ${d.toLocaleDateString()}`;
         } else {
-            var hours = diff / 3600;
+            var hours = Math.floor(diff / 3600);
             diff -= (hours * 3600);
-            var minutes = diff / 60;
-            diff -= (mins * 60);
+            var minutes = Math.floor(diff / 60);
+            diff -= (minutes * 60);
             if(hours > 0)
                 when = `${hours}h`;
             if(minutes > 0)
                 when += `${minutes}m`;
-            if(seconds > 0 || when === "")
-                when += `${seconds}s`;
+            diff = Math.floor(diff);
+            if(diff > 0 || when === "")
+                when += `${diff}s`;
             when += " ago";
         }
         txt.innerText = ` @ ${toTime(vidData.saved)}; ${when}`;
