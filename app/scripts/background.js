@@ -1,6 +1,6 @@
-/*chrome.browserAction.onClicked.addListener(function(tab) {
+chrome.browserAction.onClicked.addListener(function(tab) {
     chrome.tabs.create({url: "popup.html"})
-});*/
+});
 
 /*var _oldLog = console.log;
 console.log = function(str) {
@@ -19,7 +19,7 @@ console.log = function(str) {
 var INFO = {};
 var PORTS = {};
 var PORTS_WATCHING = {};
-var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" // ;
+var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
 var CACHE = {};
 var GET_QUEUE = [];
 var SET_QUEUE = {}
@@ -181,6 +181,14 @@ function onMessage(message, sender, response) {
                 "windowId": tab.windowId
             });
         }
+    } else if(message.type === "getLatest") {
+        getLatestWatched(function(obj) {
+            sender.postMessage(new InternalPacket(TYPE.SEND_LATEST, obj));
+        })
+    } else if(message.type === TYPE.NAVIGATE_ID) {
+        chrome.tabs.create({
+            url: `https://youtube.com/watch?v=${message.data}`
+        });
     }
 }
 
@@ -217,10 +225,15 @@ function wsOnMessage(event) {
         INFO.interval = packet.content;
         startProcessQueues(); // restarts intervals
         return;
+    } else if(packet.id === "SendVersion") {
+        handleVersion(packet.content);
+    } else if(packet.res !== undefined) {
+        var callback = WS_CALLBACK[packet.res];
+        callback(packet.content);
+        delete WS_CALLBACK[packet.res];
+    } else {
+        console.warn("[WS] Unknown packet received ", packet);
     }
-    var callback = WS_CALLBACK[packet.res];
-    callback(packet.content);
-    delete WS_CALLBACK[packet.res];
 }
 function sendPacket(packet, callback) {
     packet.seq = SEQUENCE++;
@@ -311,6 +324,12 @@ function getTimes(timesObject, callback) {
     });
 }
 
+function getLatestWatched(callback) {
+    sendPacket(new WebSocketPacket("GetLatest", null), function(data) {
+        callback(data);
+    });
+}
+
 async function setTimes(timesObject, callback) {
     console.log(timesObject);
     sendPacket({
@@ -351,29 +370,28 @@ function processSetQueue() {
     }
 }
 
+function handleVersion(webVersion) {
+    var manifest = chrome.runtime.getManifest();
+    console.log(manifest);
+    console.log(webVersion);
+    var selfVersion = manifest.version;
+    var compare = versionCompare(selfVersion, webVersion);
+    if(compare === 0) {
+        console.log("Running latest version");
+    } else if (compare > 0) {
+        console.log("Running newer version")
+    } else if(compare < 0) {
+        console.warn("Running older version")
+        UP_TO_DATE = webVersion;
+        postMessage(new InternalPacket(TYPE.UPDATE, UP_TO_DATE));
+    }
+}
+
 async function checkVersion(alarm) {
     sendPacket({
         id: "GetVersion",
         content: null
-    }, function(webVersion) {
-        var manifest = chrome.runtime.getManifest();
-        console.log(manifest);
-        console.log(webVersion);
-        var selfVersion = manifest.version;
-        var compare = versionCompare(selfVersion, webVersion);
-        if(compare === 0) {
-            console.log("Running latest version");
-        } else if (compare > 0) {
-            console.log("Running newer version")
-        } else if(compare < 0) {
-            console.warn("Running older version")
-            UP_TO_DATE = webVersion;
-            for(let portId in PORTS) {
-                var port = PORTS[portId];
-                port.postMessage({type: "update", data: UP_TO_DATE});
-            }
-        }
-    });
+    }, handleVersion);
 }
 
 async function alarmRaised(alarm) {

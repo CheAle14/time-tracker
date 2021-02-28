@@ -6,7 +6,7 @@ btn.onclick = submit;
 btn.disabled = true;
 var port = chrome.runtime.connect();
 port.onMessage.addListener(function(message, sender, response) {
-    console.log(message);
+    console.log("[INT] << ", message);
     if(message.type === "sendInfo") {
         text.innerText = "Set token below";
         if(message.data.token) {
@@ -19,8 +19,14 @@ port.onMessage.addListener(function(message, sender, response) {
         btn.disabled = false;
     } else if(message.type === "sendData") {
         setTabs(message.data);
+    } else if(message.type === TYPE.SEND_LATEST) {
+        setLatest(message.data);
     }
 });
+function postMessage(packet) {
+    console.debug("[INT] >> ", packet);
+    port.postMessage(packet);
+}
 function pad(value, length) {
     return (value.toString().length < length) ? pad("0"+value, length):value;
 }
@@ -38,7 +44,7 @@ function toTime(diff) {
 }
 function submit() {
     console.log("Sending!")
-    port.postMessage({type: "setToken", data: inp.value});
+    postMessage({type: "setToken", data: inp.value});
 }
 function setTabs(data) {
     var ls = document.getElementById("ctabs");
@@ -50,7 +56,7 @@ function setTabs(data) {
         var anchor = document.createElement("a");
         anchor.href = "#";
         anchor.innerText = `${portId}`;
-        anchor.onclick = thing;
+        anchor.onclick = navigateToPort;
         elem.appendChild(anchor);
         var txt = document.createElement("span");
         if(vid) {
@@ -65,13 +71,56 @@ function setTabs(data) {
         ls.appendChild(elem);
     }
 }
+function setLatest(data) {
+    var ls = document.getElementById("lWatched");
+    ls.innerHTML = "";
+    for(const vidId in data) {
+        var vidData = data[vidId];
+        var elem = document.createElement("li");
+        var anchor = document.createElement("a");
+        anchor.setAttribute("mlapi-id", vidId)
+        anchor.href = "#";
+        anchor.innerText = `${vidId}`;
+        anchor.onclick = openNewId;
+        elem.appendChild(anchor);
+        var txt = document.createElement("span");
+        var when = "";
+        var diff = Date.now() - vidData.when;
+        if(diff > (3600 * 24)) {
+            var d = new Date(vidData.when);
+            console.log(d);
+            when = `on ${d.toLocaleDateString()}`;
+        } else {
+            var hours = diff / 3600;
+            diff -= (hours * 3600);
+            var minutes = diff / 60;
+            diff -= (mins * 60);
+            if(hours > 0)
+                when = `${hours}h`;
+            if(minutes > 0)
+                when += `${minutes}m`;
+            if(seconds > 0 || when === "")
+                when += `${seconds}s`;
+            when += " ago";
+        }
+        txt.innerText = ` @ ${toTime(vidData.saved)}; ${when}`;
+        elem.appendChild(txt);
+        ls.appendChild(elem);
+    }
+}
 
-function thing(event) {
+function openNewId(event) {
+    const vidId = this.getAttribute("mlapi-id");
+    postMessage(new InternalPacket(TYPE.NAVIGATE_ID, vidId));
+}
+
+function navigateToPort(event) {
     const portId = parseInt(this.innerText);
-    port.postMessage({type: "highlightTab", data: portId});
+    postMessage(new InternalPacket("highlightTab", portId));
 }
 
 setInterval(function() {
     port.postMessage({type: "getData"});
 }, 5000);
 port.postMessage({type: "getData"});
+postMessage(new InternalPacket("getLatest", null));

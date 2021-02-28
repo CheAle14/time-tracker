@@ -79,7 +79,7 @@ port.onMessage.addListener(function(message, sender, response) {
             vidToolTip.ErrorText = message.data.display;
             vidToolTip.Style.color = "red";
         }
-    } else if(message.type === "update") {
+    } else if(message.type === TYPE.UPDATE) {
         Toastify({
             text: `Update available: ${message.data}; click to go to github`,
             duration: -1,
@@ -416,9 +416,9 @@ function saveTime() {
         pause();
         getVideo().currentTime = CACHE[WATCHING] || 0;
     }
-    thing = {};
-    thing[WATCHING] = getVideo().currentTime;
-    postMessage({type: "setTime", data: thing});
+    navigateToPort = {};
+    navigateToPort[WATCHING] = getVideo().currentTime;
+    postMessage({type: "setTime", data: navigateToPort});
 }
 
 function videoSync() {
