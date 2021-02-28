@@ -371,6 +371,8 @@ function processSetQueue() {
 }
 
 function handleVersion(webVersion) {
+    if(UP_TO_DATE === webVersion)
+        return;
     var manifest = chrome.runtime.getManifest();
     console.log(manifest);
     console.log(webVersion);
