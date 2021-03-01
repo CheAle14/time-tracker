@@ -132,7 +132,7 @@ function isWatchingFullScreen() {
 
 function getTxtContainer() {
     if(IS_MOBILE) {
-        return document.getElementsByClassName("time-display-content cbox")[0];
+        return document.getElementsByClassName("player-controls-top")[0];
     } else {
         return document.getElementsByClassName("ytp-time-display notranslate")[0];
     }
@@ -154,7 +154,13 @@ function getVideoTxt() {
     txt = document.createElement("span");
     txt.id = "mlapi-time-display";
     txt.classList.add(IS_MOBILE ? "time-second" : "ytp-time-current");
-    container.appendChild(txt);
+    if(IS_MOBILE) {
+        txt.style.position = "relative";
+        txt.style.left = "-150px";
+        container.insertBefore(txt, container.firstChild);
+    } else {
+        container.appendChild(txt);
+    }
     return txt;
 }
 
@@ -462,7 +468,7 @@ setInterval(function() {
 setInterval(function() {
     var w = getId();
     if(WATCHING !== w) {
-        CACHE = {}; //reset
+        delete CACHE[w];
         WATCHING = w;
         if(w) {
             LOADED = false;
@@ -497,8 +503,6 @@ setInterval(function() {
     }
     if(WATCHING) {
         var v = getVideo();
-        if(IS_MOBILE && v.paused === false)
-            return;
         var a = getVideoTxt();
         if(a) {
             a.innerText = vidToolTip.ToText();
