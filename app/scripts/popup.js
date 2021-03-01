@@ -80,9 +80,16 @@ function setLatest(data) {
         var anchor = document.createElement("a");
         anchor.setAttribute("mlapi-id", vidId)
         anchor.href = "#";
-        anchor.innerText = `${vidId}`;
-        anchor.onclick = openNewId;
         elem.appendChild(anchor);
+        if(vidData.title) {
+            anchor.innerText = vidData.title;
+            var aa = document.createElement("span");
+            aa.innerText = ` by ${vidData.author}`;
+            elem.appendChild(aa);
+        } else {
+            anchor.innerText = `${vidId}`;
+        }
+        anchor.onclick = openNewId;
         var txt = document.createElement("span");
         var when = "";
         var diff = Date.now() - vidData.when;
