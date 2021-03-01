@@ -294,6 +294,7 @@ function setTimes() {
     if(WATCHING !== null && LOADED === false) {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
+            console.log(`Setting video currentTime to ${data}`);
             getVideo().currentTime = data;
             vidToolTip.SavedTime = toTime(data);
             LOADED = true;
@@ -334,22 +335,29 @@ function pause() {
         addVideoListeners();
     }
 }
+function playToast() {
+    Toastify({
+        text: `Video can be played!`,
+        duration: 5000,
+        close: true,
+        gravity: "top", // `top` or `bottom`
+        position: "right", // `left`, `center` or `right`
+        backgroundColor: "blue",
+        stopOnFocus: true, // Prevents dismissing of toast on hover
+        onClick: function(){} // Callback after click
+    }).showToast();
+}
 function play() {
+    if(IS_MOBILE) {
+        playToast();
+        return;
+    }
     var promise = getVideo().play();
     if (promise !== undefined) {
         promise.then(_ => {
             // Autoplay started!
         }).catch(error => {
-            Toastify({
-                text: `Video can be played!`,
-                duration: 5000,
-                close: true,
-                gravity: "top", // `top` or `bottom`
-                position: "right", // `left`, `center` or `right`
-                backgroundColor: "blue",
-                stopOnFocus: true, // Prevents dismissing of toast on hover
-                onClick: function(){} // Callback after click
-            }).showToast();
+            playToast();
         });
     }
 }
