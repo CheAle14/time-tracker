@@ -462,6 +462,7 @@ setInterval(function() {
 setInterval(function() {
     var w = getId();
     if(WATCHING !== w) {
+        CACHE = {}; //reset
         WATCHING = w;
         if(w) {
             LOADED = false;

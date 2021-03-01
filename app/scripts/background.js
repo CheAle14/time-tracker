@@ -161,6 +161,7 @@ function onMessage(message, sender, response) {
         } else {
             PORTS_WATCHING[sender.id] = vidId;
             console.log(`${sender.name} now watching ${vidId}`);
+            delete CACHE[vidId]; // ensure it is fresh
             getTimes([message.data], function(obj) {
                 postMessage({"type": "gotTimes", data: obj});
             }); // Immediately begin fetching video time to save load times
