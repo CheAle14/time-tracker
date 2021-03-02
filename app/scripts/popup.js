@@ -30,18 +30,7 @@ function postMessage(packet) {
 function pad(value, length) {
     return (value.toString().length < length) ? pad("0"+value, length):value;
 }
-function toTime(diff) {
-    var hours = Math.floor(diff / (60 * 60));
-    diff -= hours * (60 * 60);
-    var mins = Math.floor(diff / (60));
-    diff -= mins * (60);
-    var seconds = Math.floor(diff);
-    if(hours === 0) {
-        return `${pad(mins, 2)}:${pad(seconds, 2)}`;
-    } else {
-        return `${pad(hours, 2)}:${pad(mins, 2)}:${pad(seconds, 2)}`;
-    }
-}
+
 function submit() {
     console.log("Sending!")
     postMessage({type: "setToken", data: inp.value});
@@ -61,7 +50,7 @@ function setTabs(data) {
         var txt = document.createElement("span");
         if(vid) {
             var time = data.cache[vid];
-            txt.innerText = time ? ` watching ${vid} @ ${toTime(time.t)}` : ` watching ${vid}`;
+            txt.innerText = time ? ` watching ${vid} @ ${HELPERS.ToTime(time.t)}` : ` watching ${vid}`;
         } else if(port.sender.url.startsWith("chrome-extension://")) {
             txt.innerText = " looking at popup page";
         } else {
@@ -112,7 +101,7 @@ function setLatest(data) {
                 when += `${diff}s`;
             when += " ago";
         }
-        txt.innerText = ` @ ${toTime(vidData.saved)}; ${when}`;
+        txt.innerText = ` @ ${HELPERS.ToTime(vidData.saved)}; ${when}`;
         elem.appendChild(txt);
         ls.appendChild(elem);
     }

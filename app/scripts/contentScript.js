@@ -6,25 +6,9 @@ var HALTED = false;
 var CALLBACKS = {};
 var SEQUENCE = 0;
 
-const vidToolTip = {
-    SavedTime: null,
-    Paused: false,
-    Ended: false,
-    ErrorText: null,
-    Style: {},
-    ToText: function() {
-        var s = "";
-        if(this.SavedTime)
-            s = this.SavedTime;
-        if(this.ErrorText)
-            s += " " + this.ErrorText;
-        else if (this.Ended)
-            s += " | Ended";
-        else if(this.Paused)
-            s += " (P)";
-        return s;
-    }
-}
+const vidToolTip = new VideoToolTip();
+var flavRemoveLoaded = []; // flavours to remove once loaded
+var flavRemoveSave = []; // flavours to remove once saved
 
 var fetchingToast = null;
 var watchingToast = null;
@@ -54,7 +38,14 @@ port.onMessage.addListener(function(message, sender, response) {
         for(let id in message.data) {
             if(id === WATCHING) {
                 console.log(`Saved up to ${message.data[id]}`);
-                vidToolTip.SavedTime = toTime(message.data[id]);
+                vidToolTip.SavedTime = HELPERS.ToTime(message.data[id]);
+                var x = 0;
+                while(x < flavRemoveSave.length) {
+                    var f = flavRemoveSave[x];
+                    vidToolTip.RemoveFlavour(f);
+                    flavRemoveSave.splice(x, 1);
+                    x++;
+                }
             }
         }
     } else if(message.type === "setState") {
@@ -67,17 +58,16 @@ port.onMessage.addListener(function(message, sender, response) {
                 if(oldVideoState)
                     play();
             } catch {}
-            vidToolTip.SavedTime = state.display;
             vidToolTip.Style = {};
-            vidToolTip.ErrorText = null;
+            vidToolTip.Error = null;
+            vidToolTip.AddFlavour(new VideoToolTipFlavour(state.display, {color: "blue"}, 10000));
         } else {
             oldVideoState = !getVideo().paused;
             HALTED = true;
             try {
                 pause();
             } catch {}
-            vidToolTip.ErrorText = message.data.display;
-            vidToolTip.Style.color = "red";
+            vidToolTip.Error = new VideoToolTipFlavour(message.data.display, {color: "red"}, -1);
         }
     } else if(message.type === TYPE.UPDATE) {
         Toastify({
@@ -106,7 +96,7 @@ port.onDisconnect.addListener(function() {
     CONNECTED = false;
     if(getVideo()) {
         pause();
-        vidToolTip.ErrorText = "!! Disconnected !!";
+        vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
     }
     Toastify({
         text: "Disconnected from backend server; reloading...",
@@ -180,18 +170,6 @@ function getId(url) {
 function pad(value, length) {
     return (value.toString().length < length) ? pad("0"+value, length):value;
 }
-function toTime(diff) {
-    var hours = Math.floor(diff / (60 * 60));
-    diff -= hours * (60 * 60);
-    var mins = Math.floor(diff / (60));
-    diff -= mins * (60);
-    var seconds = Math.floor(diff);
-    if(hours === 0) {
-        return `${pad(mins, 2)}:${pad(seconds, 2)}`;
-    } else {
-        return `${pad(hours, 2)}:${pad(mins, 2)}:${pad(seconds, 2)}`;
-    }
-}
 function parseToSeconds(text) {
     var split = `${text}`.split(":");
     var hours = 0;
@@ -263,18 +241,18 @@ function setThumbnails() {
             var time = CACHE[id];
             var perc = time / vidLength;
             if(perc >= 0.9) {
-                element.innerText = `✔️ ${toTime(vidLength)}`;
+                element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
                 element.style.color = "green";
                 if(IS_MOBILE)
                     element.style.backgroundColor = "white";
             } else if(perc > 0) {
                 var remaining = vidLength - time;
-                element.innerText = toTime(remaining);
+                element.innerText = HELPERS.ToTime(remaining);
                 element.style.color = "orange";
                 if(IS_MOBILE)
                     element.style.backgroundColor = "blue";
             } else {
-                element.innerText = toTime(vidLength);
+                element.innerText = HELPERS.ToTime(vidLength);
             }
             CACHE[id] = time;
             element.setAttribute("mlapi-state", "fetched")
@@ -282,16 +260,32 @@ function setThumbnails() {
         } else {
             if(state === "fetching") {
                 var prefix = element.innerText.startsWith("🔄") ? "🔃" : "🔄";
-                element.innerText = `${prefix} ${toTime(vidLength)}`;
+                element.innerText = `${prefix} ${HELPERS.ToTime(vidLength)}`;
             } else {
                 element.setAttribute("mlapi-state", "fetching");
-                element.innerText = `🔄 ${toTime(vidLength)}`;
+                element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
                 delete CACHE[id];
                 mustFetch.push(id);
             }
         }
     }
     return mustFetch;
+}
+
+function setCurrentTimeCorrect() {
+    if(LOADED)
+        return;
+    var diff = getVideo().currentTime - CACHE[WATCHING];
+    if(diff > 1500) {
+        console.log("Setting current time as it is beyond cache");
+        getVideo().currentTime = CACHE[WATCHING];
+        setTimeout(setCurrentTimeCorrect, 500);
+    } else {
+        LOADED = true;
+        if(getVideo().paused)
+            play();
+    }
+
 }
 
 function setTimes() {
@@ -301,9 +295,16 @@ function setTimes() {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
             console.log(`Setting video currentTime to ${data}`);
-            getVideo().currentTime = data;
-            vidToolTip.SavedTime = toTime(data);
-            LOADED = true;
+            var time = HELPERS.ToTime(data);
+            vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${time}`, {color: "orange"}, 20000));
+            var x = 0;
+            while(x < flavRemoveLoaded.length) {
+                var id = flavRemoveLoaded[x];
+                vidToolTip.RemoveFlavour(id);
+                flavRemoveLoaded.splice(x, 1);
+                x++;
+            }
+            vidToolTip.SavedTime = time;
             if(fetchingToast) {
                 fetchingToast.hideToast();
                 fetchingToast = null;
@@ -312,8 +313,7 @@ function setTimes() {
                 watchingToast.hideToast();
                 watchingToast = null;
             }
-            if(getVideo().paused)
-                play();
+            setCurrentTimeCorrect();
         }
     }
 
@@ -392,16 +392,16 @@ function addVideoListeners() {
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }
-        console.log("Video play started.");
         if(CONNECTED === false) {
             pause();
             console.error("Cannot play video: not syncing");
             return;
         }
+        console.log("Video play started.");
         setInterval(videoSync, 1000);
         vidToolTip.Paused = false;
         vidToolTip.Ended = false;
-        vidToolTip.SavedTime = "Sync started...";
+        flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
         if(HALTED)
@@ -420,7 +420,7 @@ function boot() {
         pause();
         if(IS_MOBILE === false)
             addVideoListeners();
-        vidToolTip.SavedTime = "Fetching...";
+        flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
     }
 }
 
@@ -505,8 +505,8 @@ setInterval(function() {
         var v = getVideo();
         var a = getVideoTxt();
         if(a) {
-            a.innerText = vidToolTip.ToText();
-            a.style = vidToolTip.Style;
+            a.innerHTML = "";
+            a.appendChild(vidToolTip.Build());
         }
     }
 }, 500);

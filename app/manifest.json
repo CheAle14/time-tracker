@@ -1,7 +1,7 @@
 {
     "name": "Video Time Tracker",
     "description": "Tracks the time watched of videos, synced across devices",
-    "version": "1.8",
+    "version": "1.8.1",
     "permissions": [
         "storage",
         "activeTab",
@@ -17,7 +17,7 @@
                 "https://youtube.com/*",
                 "https://*.youtube.com/*"
             ],
-            "js": ["toast/toast.js", "scripts/contentScript.js", "scripts/classes.js"],
+            "js": ["toast/toast.js", "scripts/classes.js", "scripts/contentScript.js"],
             "css": ["toast/toast.css"]
         }
     ],
