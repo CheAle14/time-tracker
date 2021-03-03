@@ -124,7 +124,13 @@ function getTxtContainer() {
     if(IS_MOBILE) {
         return document.getElementsByClassName("player-controls-top")[0];
     } else {
-        return document.getElementsByClassName("ytp-time-display notranslate")[0];
+        var elems = document.getElementsByClassName("ytp-time-display notranslate");
+        for(var thing of elems) {
+            var p = thing.parentElement;
+            if(p.classList.contains("ytp-left-controls"))
+                return thing; 
+        }
+        return elems[0];
     }
 }
 
@@ -197,10 +203,12 @@ function getThumbnails() {
 }
 
 function getVideo() {
-    if(IS_MOBILE) 
+    if(IS_MOBILE) {
         return document.getElementsByClassName("video-stream html5-main-video")[0];
-    else
+    }
+    else {
         return document.getElementsByClassName("video-stream html5-main-video")[0];
+    }
 }
 
 function setThumbnails() {
@@ -273,14 +281,19 @@ function setThumbnails() {
 }
 
 function setCurrentTimeCorrect() {
-    if(LOADED)
+    if(LOADED === true)
         return;
-    var diff = getVideo().currentTime - CACHE[WATCHING];
-    if(diff > 1500) {
+    var diff = Math.abs(getVideo().currentTime - CACHE[WATCHING]);
+    console.log(`Difference is ${diff}s, wanting to set to ${CACHE[WATCHING]}`)
+    if(diff > 1.5) {
         console.log("Setting current time as it is beyond cache");
         getVideo().currentTime = CACHE[WATCHING];
-        setTimeout(setCurrentTimeCorrect, 500);
+        setTimeout(function() {
+            console.log("Checking timestamp");
+            setCurrentTimeCorrect();
+        }, 500);
     } else {
+        console.log("Satisfactory, playing...");
         LOADED = true;
         if(getVideo().paused)
             play();
@@ -305,6 +318,7 @@ function setTimes() {
                 x++;
             }
             vidToolTip.SavedTime = time;
+            setCurrentTimeCorrect();
             if(fetchingToast) {
                 fetchingToast.hideToast();
                 fetchingToast = null;
@@ -313,7 +327,6 @@ function setTimes() {
                 watchingToast.hideToast();
                 watchingToast = null;
             }
-            setCurrentTimeCorrect();
         }
     }
 
@@ -336,6 +349,7 @@ function getThumbnailFor(id) {
 }
 
 function pause() {
+    console.log("Pausing video");
     getVideo().pause();
     if(IS_MOBILE) {
         addVideoListeners();
@@ -358,10 +372,12 @@ function play() {
         playToast();
         return;
     }
+    console.log("Playing...");
     var promise = getVideo().play();
     if (promise !== undefined) {
-        promise.then(_ => {
+        promise.then(e => {
             // Autoplay started!
+            console.log("Play has begun", e);
         }).catch(error => {
             playToast();
         });
