@@ -186,7 +186,7 @@ class VideoToolTip {
      * @returns {VideoToolTipFlavour}
      */
     get Error() {
-        return this._error;
+        return this._flavours.error;
     }
 
     /**
@@ -197,7 +197,7 @@ class VideoToolTip {
     set Error(value) {
         if(typeof value !== "object")
             throw new TypeError(`Value invalid type of '${typeof value}'`);
-        this._error = value;
+        this._flavours.error = value;
         this._dirty = true;
     }
 
@@ -218,7 +218,6 @@ class VideoToolTip {
                 return true;
             } else {
                 i++;
-                span.appendChild(x.ToElement());
             }
         }
         return false;

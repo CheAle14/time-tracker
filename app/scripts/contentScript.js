@@ -281,9 +281,14 @@ function setThumbnails() {
 }
 
 function setCurrentTimeCorrect() {
-    if(LOADED === true)
-        return;
-    var diff = Math.abs(getVideo().currentTime - CACHE[WATCHING]);
+    console.log("Invoked setCurrentTimeCorrect");
+    var vid = getVideo();
+    console.log("Got video as ", vid);
+    var time = vid.currentTime;
+    console.log("Got time as ", time);
+    var cache = CACHE[WATCHING];
+    console.log("Got cached time as ", cache);
+    var diff = Math.abs(time - cache);
     console.log(`Difference is ${diff}s, wanting to set to ${CACHE[WATCHING]}`)
     if(diff > 1.5) {
         console.log("Setting current time as it is beyond cache");
@@ -308,17 +313,19 @@ function setTimes() {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
             console.log(`Setting video currentTime to ${data}`);
-            var time = HELPERS.ToTime(data);
-            vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${time}`, {color: "orange"}, 20000));
-            var x = 0;
-            while(x < flavRemoveLoaded.length) {
-                var id = flavRemoveLoaded[x];
-                vidToolTip.RemoveFlavour(id);
-                flavRemoveLoaded.splice(x, 1);
-                x++;
+            try {
+                var time = HELPERS.ToTime(data);
+                vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${time}`, {color: "orange"}, 20000));
+                while(flavRemoveLoaded.length > 0) {
+                    var id = flavRemoveLoaded[x];
+                    vidToolTip.RemoveFlavour(id);
+                    flavRemoveLoaded.splice(0, 1);
+                }
+                vidToolTip.SavedTime = time;
+                setCurrentTimeCorrect();
+            } catch (error) {
+                console.error(error);
             }
-            vidToolTip.SavedTime = time;
-            setCurrentTimeCorrect();
             if(fetchingToast) {
                 fetchingToast.hideToast();
                 fetchingToast = null;
