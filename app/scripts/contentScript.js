@@ -471,7 +471,7 @@ setInterval(function() {
         if(fetchingToast) {
             fetchingToast.toastElement.innerText = `Fetching ${tofetch.length} thumbnails..`;
         } else if(!isWatchingFullScreen()) {
-            fetchingToast = Toastify({
+            /*fetchingToast = Toastify({
                 text: `Fetching ${tofetch.length} thumbnails..`,
                 duration: -1,
                 close: true,
@@ -480,7 +480,8 @@ setInterval(function() {
                 backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
                 stopOnFocus: true, // Prevents dismissing of toast on hover
                 onClick: function(){} // Callback after click
-            }).showToast();
+            }).showToast();*/
+            // TODO: add settings page to toggle this behaviour and other things
         }
     } else if(fetchingToast) {
         fetchingToast.hideToast();
