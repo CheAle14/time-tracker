@@ -15,6 +15,7 @@ port.onMessage.addListener(function(message, sender, response) {
         }
         if(message.data.name) {
             text.innerText = "Logged in as " + message.data.name;
+            postMessage(new InternalPacket("getLatest", null));
         }
         btn.disabled = false;
     } else if(message.type === "sendData") {
@@ -121,4 +122,3 @@ setInterval(function() {
     port.postMessage({type: "getData"});
 }, 5000);
 port.postMessage({type: "getData"});
-postMessage(new InternalPacket("getLatest", null));

@@ -15,8 +15,17 @@ console.log = function(str) {
         body: JSON.stringify({"message": inMessage})
     });
 }*/
-
-var INFO = {};
+function defaultInfo() {
+    return {
+        name: null,
+        id: null,
+        interval: {
+            get: 15000,
+            set: 30000
+        }
+    }
+}
+var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
 var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
@@ -82,7 +91,7 @@ chrome.runtime.onConnect.addListener(function(thing) {
     console.log(thing);
     thing.id = id(thing);
     thing.name = getName(thing);
-    if(INFO.name === null) {
+    if(INFO.name === null && !thing.sender.url.endsWith("popup.html")) {
         thing.postMessage({type: "error", data: "Connection was not established to server. Retrying - reload page in a bit"});
         thing.disconnect();
         setup();
@@ -263,33 +272,33 @@ function startWs() {
 
 async function setToken(token) {
     INFO.token = token;
-    var response = await fetch(`${URL}/user`, {
-        headers: {
-            "X-SESSION": INFO.token
-        }
+    chrome.storage.local.set({"token": INFO.token}, function() {
+        console.log("Set token!");
     });
     try {
+        var response = await fetch(`${URL}/user`, {
+            headers: {
+                "X-SESSION": INFO.token
+            }
+        });
+    } catch (error) {
+        console.error(`Failed to set login token `, error);
+    }
+    if(response && response.ok) {
         var rText = await response.json();
         console.log(rText);
         if(rText) {
             INFO.name = rText.name;
             INFO.id = rText.id;
             INFO.interval = rText.interval;
-            chrome.storage.local.set({"token": INFO.token}, function() {
-                console.log("Set token!");
-            });
             startWs();
         } else {
-            INFO.name = null;
-            INFO.id = null;
-            INFO.interval = {set: 15000, get: 5000};
+            INFO = defaultInfo();
         }
-        console.log(`Loaded token, logged in as ${INFO.name}`);
-        postMessage({type: "sendInfo", data: INFO});
-    } catch(e) {
-        console.log("Failed to login using token.");
-        console.error(e);
+    } else {
+        INFO = defaultInfo();
     }
+    postMessage({type: "sendInfo", data: INFO});
 }
 
 function getTimes(timesObject, callback) {
@@ -415,7 +424,11 @@ function startProcessQueues() {
 
 async function setup() {
     chrome.storage.local.get(["token"], async function(result) {
-        await setToken(result.token);
+        if(result && result.token) {
+            await setToken(result.token);
+        } else {
+            console.debug(result);
+        }
     });
     chrome.alarms.onAlarm.addListener(alarmRaised);
     chrome.alarms.get("versionCheck", function(alarm) {
@@ -425,6 +438,15 @@ async function setup() {
             });
         }
     });
+    chrome.runtime.onInstalled.addListener(function(details) {
+        console.log(details);
+        chrome.storage.local.get("token", async function(result) {
+            if(result && result.token) {}
+            else {
+                chrome.tabs.create({url: "popup.html"});
+            }
+        });
+    })
 }
 setup();
 
