@@ -317,7 +317,7 @@ function setTimes() {
                 var time = HELPERS.ToTime(data);
                 vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${time}`, {color: "orange"}, 20000));
                 while(flavRemoveLoaded.length > 0) {
-                    var id = flavRemoveLoaded[x];
+                    var id = flavRemoveLoaded[0];
                     vidToolTip.RemoveFlavour(id);
                     flavRemoveLoaded.splice(0, 1);
                 }
