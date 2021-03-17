@@ -19,13 +19,13 @@ function postMessage(packet, callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
     }
-    console.log(`[PORT] >>`, packet);
+    console.debug(`[PORT] >>`, packet);
     port.postMessage(packet);
 }
 
 console.log("Connected to port");
 port.onMessage.addListener(function(message, sender, response) {
-    console.log("[PORT] <<", message);
+    console.debug("[PORT] <<", message);
     if(message.type === "gotTimes") {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
@@ -211,6 +211,13 @@ function getVideo() {
     }
 }
 
+function getVideoLength() {
+    var vid = getVideo();
+    if(vid)
+        return vid.duration;
+    return null;
+}
+
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
@@ -288,11 +295,26 @@ function setCurrentTimeCorrect() {
     console.log("Got time as ", time);
     var cache = CACHE[WATCHING];
     console.log("Got cached time as ", cache);
+    var videoTime = getVideoLength();
+    if(videoTime) {
+        var perc = cache / videoTime;
+        console.log("Perc: ", perc);
+        if(perc >= 0.975) {
+            console.log("Setting video time correct to 0, as rewatching.");
+            cache = 0;
+        }
+    } else {
+        pause(); // make sure it is paused
+        setTimeout(function() {
+            setCurrentTimeCorrect();
+        }, 500);
+        return;
+    }
     var diff = Math.abs(time - cache);
-    console.log(`Difference is ${diff}s, wanting to set to ${CACHE[WATCHING]}`)
+    console.log(`Difference is ${diff}s, wanting to set to ${cache}`)
     if(diff > 1.5) {
         console.log("Setting current time as it is beyond cache");
-        getVideo().currentTime = CACHE[WATCHING];
+        getVideo().currentTime = cache;
         setTimeout(function() {
             console.log("Checking timestamp");
             setCurrentTimeCorrect();
