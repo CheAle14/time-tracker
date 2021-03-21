@@ -222,6 +222,16 @@ class VideoToolTip {
         }
         return false;
     }
+    /**
+     * Removes all current flavours
+     */
+    ClearFlavours() {
+        var i = 0;
+        while( i < this._flavours.extra.length) {
+            this._flavours.extra.splice(i, 1);
+            i++;
+        }
+    }
 
     /**
      * Gets the overall style to be applied to the element

@@ -476,7 +476,9 @@ function saveTime() {
         getVideo().currentTime = CACHE[WATCHING] || 0;
     }
     navigateToPort = {};
-    navigateToPort[WATCHING] = getVideo().currentTime;
+    var time = getVideo().currentTime;
+    navigateToPort[WATCHING] = time;
+    CACHE[WATCHING] = time;
     postMessage({type: "setTime", data: navigateToPort});
 }
 
@@ -519,6 +521,7 @@ setInterval(function() {
         if(w) {
             LOADED = false;
             console.log(`Now watching ${w}`);
+            vidToolTip.ClearFlavours();
             postMessage({type: "setWatching", data: WATCHING});
             if(watchingToast) {
                 watchingToast.toastElement.innerText = "Fetching video saved time..";
