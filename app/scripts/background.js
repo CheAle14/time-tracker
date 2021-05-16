@@ -29,9 +29,9 @@ var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
 var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
-var CACHE = {};
-var GET_QUEUE = [];
-var SET_QUEUE = {}
+const CACHE = new TrackerCache();
+var YT_GET_QUEUE = [];
+var YT_SET_QUEUE = {}
 var UP_TO_DATE = true;
 var QUEUE_IDS = {"get": 0, "set": 0};
 var WS = null;
@@ -125,8 +125,8 @@ function onMessage(message, sender, response) {
     } else if(message.type === "getTimes") {
         var instantResponse = {};
         for(const vId of message.data) {
-            if(!(vId in GET_QUEUE)) {
-                var cached = CACHE[vId];
+            if(!(vId in YT_GET_QUEUE)) {
+                var cached = CACHE.Fetch(vId);
                 if(cached) {
                     var diff = Date.now() - cached.w;
                     if(diff < CACHE_TIMEOUT) {
@@ -135,7 +135,7 @@ function onMessage(message, sender, response) {
                         continue;
                     }
                 }
-                GET_QUEUE.push(vId);
+                YT_GET_QUEUE.push(vId);
             }
         }
         if(getObjectLength(instantResponse) > 0) {
@@ -144,8 +144,8 @@ function onMessage(message, sender, response) {
     } else if(message.type === "setTime") {
         for(const vId in message.data) {
             var time = message.data[vId];
-            SET_QUEUE[vId] = time;
-            CACHE[vId] = {"t": time, "w": Date.now()};
+            YT_SET_QUEUE[vId] = time;
+            CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), t));
         }
     } else if(message.type === "setWatching") {
         var vidId = message.data;
@@ -201,6 +201,28 @@ function onMessage(message, sender, response) {
         chrome.tabs.create({
             url: `https://youtube.com/watch?v=${message.data}`
         });
+    } else if(message.type === TYPE.REDDIT_VISITED) {
+        sendPacket({
+            id: "VisitedThread",
+            content: message.data
+        }, function(x) {
+            if(message.seq !== undefined) {
+                var resp = new InternalPacket("response", x);
+                resp.res = message.seq
+                sender.postMessage(resp);
+            }
+        });
+    } else if(message.type === TYPE.GET_REDDIT_COUNT) {
+        sendPacket({
+            id: "GetThreads",
+            content: message.data
+        }, function(x) {
+            if(message.seq !== undefined) {
+                var resp = new InternalPacket("response", x);
+                resp.res = message.seq
+                sender.postMessage(resp);
+            }
+        })
     }
 }
 
@@ -308,7 +330,9 @@ function getTimes(timesObject, callback) {
     var respJson = {};
     for(let key of timesObject) {
         if(key in CACHE) {
-            var cachedData = CACHE[key];
+            var cachedData = CACHE.Fetch(key);
+            if(cachedData.Kind !== CACHE_KIND.YOUTUBE)
+                continue;
             var time = cachedData.t;
             var cachedAt = cachedData.w;
             var diff = Date.now() - cachedAt;
@@ -330,7 +354,7 @@ function getTimes(timesObject, callback) {
     }, function(response) {
         console.log("Got callback:", response);
         for(let vId in response) {
-            CACHE[vId] = {"t": response[vId], "w": Date.now()};
+            CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), response[vId]));
         }
         callback(response);
     });
@@ -355,8 +379,8 @@ async function setTimes(timesObject, callback) {
 
 
 function processGetQueue() {
-    if(GET_QUEUE.length > 0) {
-        var q = GET_QUEUE.splice(0, 75);
+    if(YT_GET_QUEUE.length > 0) {
+        var q = YT_GET_QUEUE.splice(0, 75);
         getTimes(q, function(times) {
             console.log("Gotten times! Sending... ");
             postMessage({"type": "gotTimes", data: times});
@@ -368,10 +392,10 @@ function processGetQueue() {
     }
 }
 function processSetQueue() {
-    if(getObjectLength(SET_QUEUE) > 0) {
-        console.log(`Sending queue of ${getObjectLength(SET_QUEUE)} items`);
-        var q = SET_QUEUE;
-        SET_QUEUE = {}
+    if(getObjectLength(YT_SET_QUEUE) > 0) {
+        console.log(`Sending queue of ${getObjectLength(YT_SET_QUEUE)} items`);
+        var q = YT_SET_QUEUE;
+        YT_SET_QUEUE = {}
         setTimes(q, function(saved) {
             postMessage({type: "savedTime", data: saved});
         });

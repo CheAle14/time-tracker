@@ -31,7 +31,7 @@ class StatePacket extends InternalPacket {
      * @param {string} logMsg Text to log to console
      */
     constructor(playing, displayToolTip, logMsg) {
-        super("setState", {
+        super(TYPE.SET_STATE, {
             play: !!playing,
             display: displayToolTip,
             log: logMsg
@@ -47,6 +47,90 @@ class StatePacket extends InternalPacket {
         return this.data.log;
     }
 }
+
+/**
+ * An item stored in cache
+ */
+class CacheItem {
+    /**
+     * 
+     * @param {CACHE_KIND} kind 
+     * @param {string} id 
+     * @param {Date} cachedAt 
+     */
+    constructor(kind, id, cachedAt) {
+        this._kind = kind;
+        this._id = id;
+        this._cachedAt = cachedAt;
+    }
+
+    get Kind() {
+        return this._kind;
+    }
+
+    get Id() {
+        return this._id;
+    }
+
+    get CachedAt() {
+        return this._cachedAt;
+    }
+}
+
+class YoutubeCacheItem extends CacheItem {
+    constructor(id, cachedAt, vidTime) {
+        super(CACHE_KIND.YOUTUBE, id, cachedAt);
+        this.t = vidTime;
+    }
+}
+
+class RedditCacheItem extends CacheItem {
+    constructor(id, cachedAt, count) {
+        super(CACHE_KIND.REDDIT, id, cachedAt);
+        this._count = count;
+    }
+    
+    /**
+     * @returns {Number} The last seen number of comments
+     */
+    get Count() {
+        return this._count;
+    }
+}
+
+class TrackerCache {
+    constructor() {
+        this._cache = {};
+    }
+
+    /**
+     * Places the cache item into the cache
+     * @param {CacheItem} item 
+     */
+    Insert(item) {
+        this._cache[item.Id] = item;
+    }
+
+    /**
+     * Gets and returns the cached item from cache
+     * @param {string} id 
+     * @returns {CacheItem} The cached item, or null
+     */
+    Fetch(id) {
+        return this._cache[id];
+    }
+
+    Clear() {
+        this._cache = {};
+    }
+}
+
+const CACHE_KIND = {
+    YOUTUBE: "video",
+    REDDIT: "reddit"
+}
+
+
 /**
  * Internal Packet Types 
  */
@@ -55,7 +139,10 @@ const TYPE = {
     GET_LATEST: "getLatest",
     SEND_LATEST: "sendLatest",
     NAVIGATE_ID: "navigateId",
-    UPDATE: "update"
+    UPDATE: "update",
+    GET_REDDIT_COUNT: "getRedditCount",
+    SEND_REDDIT_COUNT: "sendRedditCount",
+    REDDIT_VISITED: "redditVisited"
 }
 const HELPERS = {
     /**
