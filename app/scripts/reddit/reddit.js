@@ -18,14 +18,18 @@ function postMessage(packet, callback) {
 
 function getThingId(url) {
     if(typeof url !== "string") {
-        url.cacheId = url.cacheId || getThingId(url.href);
-        return url.cacheId;
+        var x = url.getAttribute("hnc-thingId");
+        if(!x) {
+            x = getThingId(url.href);
+            url.setAttribute("hnc-thingId", x);
+        }
+        return x;
     }
     url = url || window.location.href;
     var mtch = url.match(/comments\/([a-z0-9]{5,7})\//m);
-    console.log(mtch);
     if(mtch) {
-        return mtch[1];
+        var x = mtch[1];
+        return x;
     }
     return null;
 }
@@ -56,6 +60,10 @@ port.onMessage.addListener(function(message, sender, response) {
         cb(message);
     }
 });
+port.onDisconnect.addListener(function() {
+    console.log("Disconnected from extension background, reloading page!");
+    window.location.reload();
+})
 
 function find(arr, p) {
     for(var el of arr)
@@ -66,8 +74,14 @@ function find(arr, p) {
 
 function getCount(anchor) {
     var text = anchor.innerText;
-    var split = text.split(" ");
-    return split.length === 1 ? 0 : parseInt(split[0]);
+    var mtch = text.match(/[0-9]+/m);
+    if(mtch) {
+        console.log(mtch);
+        return parseInt(mtch[0]);
+    } else {
+        console.warn("Could not find count from anchor ", anchor);
+        return 0;
+    }
 }
 
 function handleInfo(anchors, data) {
@@ -84,6 +98,8 @@ function handleInfo(anchors, data) {
             newSpan.classList.add("newComments");
             newSpan.style.color = "rgb(255, 69, 0)"
             anchor.appendChild(newSpan);
+        } else {
+            anchor.style.color = "#009900";
         }
     }
 
@@ -97,7 +113,7 @@ function handleInfo(anchors, data) {
     if(!threadData) {
         return;
     }
-    highlight(new Date(threadData.when));
+    highlight(new Date(threadData.cachedAt));
 }
 
 function highlight(since) {
@@ -171,17 +187,55 @@ function get_color(comment_age, highlighting_since) {
     return color_final.toHslString();
 }
 
+function getThreadCommentLinks() {
+    var done = {};
+    var anchors = [];
+    var id = Date.now();
+    for(let className of ["full-comments", "search-comments"]) {
+        for(let a of document.getElementsByClassName(className)) {
+            anchors.push(a);
+            a.setAttribute("hnc-discovered", `class:${id}`);
+        }
+    }
+    for(let a of document.getElementsByClassName("bylink may-blank")) {
+        if(a.innerText.indexOf("comment") !== -1 && getThingId(a)) {
+            var existing = a.getAttribute("hnc-discovered");
+            if(existing == null || !existing.endsWith("" + id)) {
+                anchors.push(a);
+                a.setAttribute("hnc-discovered", `rgx:${id}`);
+            }
+        }
+    }
+    return anchors;
+}
+
+function ourCount() {
+    var anchor = find(getThreadCommentLinks(), (x) => getThingId(x) == ID);
+    if(anchor) {
+        console.log("For out count, found anchor: ", anchor);
+        return getCount(anchor);
+    }
+    return 0;
+}
+
 function getInfos() {
-    var elements = document.getElementsByClassName("comments");
+    var elements = getThreadCommentLinks();
     var arr = [];
     /*if(ID) {  // Seems to be included in the above
         arr.push(ID);
     }*/
     for(var el of elements) {
+        if(el.getAttribute("hnc-tracked")) {
+            continue;
+        }
+        //console.log(`New comment anchor: `, el);
+        el.setAttribute("hnc-tracked", "true");
         arr.push(getThingId(el));
     }
+    if(arr.length === 0)
+        return;
     postMessage(new InternalPacket(TYPE.GET_REDDIT_COUNT, arr), function(r) {
-        console.log("Callback", r);
+        //console.log("Callback", r);
         if(ID) {
             var anchor = find(elements, (x) => getThingId(x) == ID);
             postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
@@ -194,3 +248,24 @@ function getInfos() {
 }
 
 getInfos();
+
+// Listen for us commenting
+var registered = new WeakSet();
+
+setInterval(function() {
+    var svBtns = document.getElementsByClassName("save");
+    for(let btn of svBtns) {
+        if(!registered.has(btn)) {
+            registered.add(btn);
+            btn.addEventListener("click", function(event) {
+                var count = ourCount() + 1;
+                console.log(`We just sent a comment! Setting known comment count to ${count}`);
+                postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
+                    id: ID,
+                    count: count
+                }));
+            });
+        }
+    }
+    getInfos();
+}, 500);

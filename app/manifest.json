@@ -1,7 +1,7 @@
 {
     "name": "Video Time Tracker",
     "description": "Tracks the time watched of videos, synced across devices",
-    "version": "1.8.8",
+    "version": "1.8.9",
     "permissions": [
         "storage",
         "activeTab",

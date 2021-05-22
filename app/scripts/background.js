@@ -128,7 +128,7 @@ function onMessage(message, sender, response) {
             if(!(vId in YT_GET_QUEUE)) {
                 var cached = CACHE.Fetch(vId);
                 if(cached) {
-                    var diff = Date.now() - cached.w;
+                    var diff = Date.now() - cached.cachedAt;
                     if(diff < CACHE_TIMEOUT) {
                         console.debug(`get: Found ${vId} in cache, out of date by ${diff}ms`);
                         instantResponse[vId] = cached.t;
@@ -145,7 +145,7 @@ function onMessage(message, sender, response) {
         for(const vId in message.data) {
             var time = message.data[vId];
             YT_SET_QUEUE[vId] = time;
-            CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), t));
+            CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), time));
         }
     } else if(message.type === "setWatching") {
         var vidId = message.data;
@@ -202,6 +202,7 @@ function onMessage(message, sender, response) {
             url: `https://youtube.com/watch?v=${message.data}`
         });
     } else if(message.type === TYPE.REDDIT_VISITED) {
+        CACHE.Insert(new RedditCacheItem(message.data.id, new Date(), message.data.count));
         sendPacket({
             id: "VisitedThread",
             content: message.data
@@ -213,16 +214,42 @@ function onMessage(message, sender, response) {
             }
         });
     } else if(message.type === TYPE.GET_REDDIT_COUNT) {
-        sendPacket({
-            id: "GetThreads",
-            content: message.data
-        }, function(x) {
+        var cached = {};
+        var remain = [];
+        for(let threadId of message.data) {
+            var item = CACHE.Fetch(threadId);
+            if(item) {
+                cached[threadId] = item;
+            } else {
+                remain.push(threadId);
+            }
+        }
+        if(remain.length === 0) {
             if(message.seq !== undefined) {
-                var resp = new InternalPacket("response", x);
+                var resp = new InternalPacket("response", cached);
                 resp.res = message.seq
                 sender.postMessage(resp);
             }
-        })
+        } else {
+            sendPacket({
+                id: "GetThreads",
+                content: message.data
+            }, function(x) {
+                for(let threadId in x) {
+                    var data = x[threadId];
+                    var cacheItem = new RedditCacheItem(threadId, data.when, data.count);
+                    CACHE.Insert(cacheItem);
+                    cached[threadId] = cacheItem;
+                }
+
+                if(message.seq !== undefined) {
+                    var resp = new InternalPacket("response", cached);
+                    resp.res = message.seq
+                    sender.postMessage(resp);
+                }
+            })
+        }
+        
     }
 }
 
@@ -334,7 +361,7 @@ function getTimes(timesObject, callback) {
             if(cachedData.Kind !== CACHE_KIND.YOUTUBE)
                 continue;
             var time = cachedData.t;
-            var cachedAt = cachedData.w;
+            var cachedAt = cachedData.cachedAt;
             var diff = Date.now() - cachedAt;
             if(diff < CACHE_TIMEOUT) {
                 console.debug(`GET: Found ${key} in cache, out of date by ${diff}ms`);

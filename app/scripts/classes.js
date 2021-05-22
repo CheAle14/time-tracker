@@ -60,20 +60,23 @@ class CacheItem {
      */
     constructor(kind, id, cachedAt) {
         this._kind = kind;
-        this._id = id;
-        this._cachedAt = cachedAt;
+        this.id = id;
+        this.cachedAt = cachedAt;
+        this.ttl = 15; // seconds to live in cache.
     }
 
     get Kind() {
         return this._kind;
     }
 
-    get Id() {
-        return this._id;
-    }
-
-    get CachedAt() {
-        return this._cachedAt;
+    /**
+     * Whether this cache item has expired
+     * 
+     * @type {boolean}
+     */
+    get IsExpired() {
+        var expiresAt = new Date(this.cachedAt.getTime() + (this.ttl * 1000));
+        return expiresAt > Date.now();
     }
 }
 
@@ -87,14 +90,8 @@ class YoutubeCacheItem extends CacheItem {
 class RedditCacheItem extends CacheItem {
     constructor(id, cachedAt, count) {
         super(CACHE_KIND.REDDIT, id, cachedAt);
-        this._count = count;
-    }
-    
-    /**
-     * @returns {Number} The last seen number of comments
-     */
-    get Count() {
-        return this._count;
+        this.count = count;
+        this.ttl = 60 * 60; // seconds to live in cache
     }
 }
 
@@ -110,6 +107,13 @@ class TrackerCache {
     Insert(item) {
         this._cache[item.Id] = item;
     }
+    /**
+     * Places the cache item into the cache
+     * @param {CacheItem} item 
+     */
+    Add(item) {
+        this.Insert(item);
+    }
 
     /**
      * Gets and returns the cached item from cache
@@ -117,7 +121,23 @@ class TrackerCache {
      * @returns {CacheItem} The cached item, or null
      */
     Fetch(id) {
-        return this._cache[id];
+        var x = this._cache[id];
+        if(x) {
+            if(x.IsExpired) {
+                console.debug(`Found in cache, but ttl expired. `, x);
+                delete this._cache[id];
+                return null;
+            }
+        }
+        return x;
+    }
+    /**
+     * Gets and returns the cached item from cache
+     * @param {string} id 
+     * @returns {CacheItem} The cached item, or null
+     */
+    Get(id) {
+        return this.Fetch(id);
     }
 
     Clear() {

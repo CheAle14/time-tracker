@@ -3,6 +3,7 @@ var port = chrome.runtime.connect();
 var CONNECTED = true;
 var LOADED = false;
 var HALTED = false;
+var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var SEQUENCE = 0;
 
@@ -13,6 +14,7 @@ var flavRemoveSave = []; // flavours to remove once saved
 var fetchingToast = null;
 var watchingToast = null;
 var oldVideoState = null;
+var disconnectToast = null;
 
 function postMessage(packet, callback) {
     if(callback) {
@@ -23,8 +25,14 @@ function postMessage(packet, callback) {
     port.postMessage(packet);
 }
 
-console.log("Connected to port");
-port.onMessage.addListener(function(message, sender, response) {
+function connectToExtension() {
+    port = chrome.runtime.connect();
+
+    port.onMessage.addListener(portOnMessage);
+    port.onDisconnect.addListener(portOnDisconnect);
+}
+
+function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
     if(message.type === "gotTimes") {
         for(let a in message.data) {
@@ -89,28 +97,66 @@ port.onMessage.addListener(function(message, sender, response) {
         console.log(`[PORT] Invoking callback handler for ${message.res}`);
         cb(message);
     }
-});
-port.onDisconnect.addListener(function() {
-    console.warn("Disconnected from ");
-    HALTED = true;
-    CONNECTED = false;
-    if(getVideo()) {
-        pause();
-        vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
+    if(CONNECTED === false) {
+        // we were disconnected, but now we're back!
+        // this logic doesn't seem to work
+        // being disconnected also means we can't call chrome.runtime.connect()
+        // so i'm reloading the page instead.
+        CONNECTED = true;
+        HALTED = false;
+        console.log("Reconnected!");
+        disconnectToast.hideToast();
+        if(PRIOR_STATE === true) {
+            console.log("Was previously playing, so attempting to play..");
+            play();
+        } else if(PRIOR_STATE === false) {
+            console.log("Was previously paused, so making sure we're paused");
+            pause();
+        } else {
+            console.log("There was no prior state??")
+        }
     }
-    Toastify({
-        text: "Disconnected from backend server; reloading...",
-        duration: -1,
-        close: true,
-        gravity: "top", // `top` or `bottom`
-        position: "right", // `left`, `center` or `right`
-        backgroundColor: "red",
-        stopOnFocus: true, // Prevents dismissing of toast on hover
-    }).showToast();
+};
+
+var reconnects = 0;
+function portOnDisconnect() {
+    if(CONNECTED) {
+        console.warn("Disconnected from backend extension");
+        reconnects = 0;
+        HALTED = true;
+        CONNECTED = false;
+        var vid = getVideo();
+        PRIOR_STATE = true;
+        if(vid) {
+            PRIOR_STATE = !vid.paused;
+        }
+        if(getVideo()) {
+            pause();
+            vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
+        }
+        disconnectToast = Toastify({
+            text: "Disconnected from backend server; reloading...",
+            duration: -1,
+            close: true,
+            gravity: "top", // `top` or `bottom`
+            position: "right", // `left`, `center` or `right`
+            backgroundColor: "red",
+            stopOnFocus: true, // Prevents dismissing of toast on hover
+        });
+        disconnectToast.showToast();
+
+    } else {
+        reconnects = reconnects + 1;
+        disconnectToast.toastElement.innerText = `Reconnecting (${reconnects} attempts)`;
+    }
     setTimeout(function() {
+        //connectToExtension();
         window.location.reload();
-    }, 5000);
-})
+    }, 1000);
+}
+
+connectToExtension();
+
 const CACHE = {}
 var WATCHING = null;
 console.log(window.location);
@@ -320,10 +366,11 @@ function setCurrentTimeCorrect() {
             setCurrentTimeCorrect();
         }, 500);
     } else {
-        console.log("Satisfactory, playing...");
+        console.log("Satisfactory...");
         LOADED = true;
-        if(getVideo().paused)
+        if(getVideo().paused && PRIOR_STATE !== false)
             play();
+        PRIOR_STATE = null;
     }
 
 }
