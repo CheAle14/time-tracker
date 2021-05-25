@@ -1,6 +1,67 @@
 chrome.browserAction.onClicked.addListener(function(tab) {
     chrome.tabs.create({url: "popup.html"})
 });
+chrome.contextMenus.onClicked.addListener(function(menu, tab) {
+    console.log(menu, " ", tab);
+    var vidUrl = menu.linkUrl || menu.pageUrl;
+    localId = function(url) {
+        url = url || window.location.href;
+        if(url.indexOf("?v=") === -1)
+            return null;
+        var id = url.substring(url.indexOf("?v=") + 3);
+    
+        var index = id.indexOf("&");
+        if(index !== -1) {
+            id = id.substring(0, index);
+        }
+        return id;
+    }
+    var id = localId(vidUrl);
+    var x = {};
+    if(BLACKLISTED_VIDEOS[id]) {
+        console.log(`ID ${id} is already blacklisted, removing it`);
+        delete BLACKLISTED_VIDEOS[id];
+        x[id] = false;
+    } else {
+        console.log(`Adding ${id} to blacklist`);
+        x[id] = true;
+        BLACKLISTED_VIDEOS[id] = true;
+    }
+    sendPacket({
+        id: "UpdateIgnored",
+        content: x
+    }, function(resp) {
+        console.log("Gotten resp: ", resp);
+        var port = PORTS[tab.id];
+        console.log(port || PORTS);
+        port.postMessage({type: "alert", data: `Video ` + (x[id] ? "has been" : "is no longer") + " blacklisted"});
+    });
+});
+chrome.contextMenus.create({
+    contexts: ["page"],
+    documentUrlPatterns: ["https://*.youtube.com/watch*", "https://youtube.com/watch*"],
+    id: "blacklistVid",
+    title: "Toggle watching ignored"
+}, function() {
+    if(chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+    } else {
+        console.log("Registered page context menu option");
+    }
+});
+chrome.contextMenus.create({
+    contexts: ["video", "link"],
+    documentUrlPatterns: ["https://*.youtube.com/*", "https://youtube.com/*"],
+    targetUrlPatterns: ["https://*.youtube.com/watch*", "https://youtube.com/watch*"],
+    id: "blacklistLink",
+    title: "Toggle right clicked ignored"
+}, function() {
+    if(chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError);
+    } else {
+        console.log("Registered video context menu option");
+    }
+});
 
 /*var _oldLog = console.log;
 console.log = function(str) {
@@ -30,6 +91,7 @@ var PORTS = {};
 var PORTS_WATCHING = {};
 var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
 const CACHE = new TrackerCache();
+const BLACKLISTED_VIDEOS = {};
 var YT_GET_QUEUE = [];
 var YT_SET_QUEUE = {}
 var UP_TO_DATE = true;
@@ -77,6 +139,10 @@ function getPortAlreadyWatching(videoId) {
     return null;
 }
 
+function isPopupUrl(url) {
+    return url.endsWith("popup.html") || url.endsWith("popup.html#");
+}
+
 chrome.runtime.onConnect.addListener(function(thing) {
     /*if(TAB) {
         try {
@@ -91,7 +157,7 @@ chrome.runtime.onConnect.addListener(function(thing) {
     console.log(thing);
     thing.id = id(thing);
     thing.name = getName(thing);
-    if(INFO.name === null && !thing.sender.url.endsWith("popup.html")) {
+    if(INFO.name === null && !isPopupUrl(thing.sender.url)) {
         thing.postMessage({type: "error", data: "Connection was not established to server. Retrying - reload page in a bit"});
         thing.disconnect();
         setup();
@@ -114,6 +180,9 @@ chrome.runtime.onConnect.addListener(function(thing) {
     thing.postMessage({type: "sendInfo", data: INFO});
     if(typeof UP_TO_DATE === "string") {
         thing.postMessage({type: "update", data: UP_TO_DATE});
+    }
+    if(isPopupUrl(thing.sender.url)) {
+        thing.postMessage({type: "provideBlacklist", data: BLACKLISTED_VIDEOS});
     }
 });
 chrome.runtime.onMessage.addListener(onMessage);
@@ -152,6 +221,11 @@ function onMessage(message, sender, response) {
         if(vidId === null) {
             delete PORTS_WATCHING[sender.id];
             console.log(`${getName(sender)} has stopped watching any videos`);
+            return;
+        }
+        if(BLACKLISTED_VIDEOS[vidId]) {
+            console.log(`${getName(sender)} has begun watching an ignored video, will tell them to continue`);
+            sender.postMessage(new InternalPacket(TYPE.IGNORED_VIDEO, undefined));
             return;
         }
         var alsoWatching = getPortAlreadyWatching(vidId);
@@ -281,17 +355,29 @@ function wsOnMessage(event) {
     }
     var packet = JSON.parse(event.data);
     console.log("[WS] <<", packet);
-    if(packet.id === "DirectRatelimit") {
+    if(packet.res !== undefined) {
+        var callback = WS_CALLBACK[packet.res];
+        callback(packet.content);
+        delete WS_CALLBACK[packet.res];
+    } else if(packet.id === "DirectRatelimit") {
         console.log(`Ratelimits updated`, packet.content);
         INFO.interval = packet.content;
         startProcessQueues(); // restarts intervals
         return;
     } else if(packet.id === "SendVersion") {
         handleVersion(packet.content);
-    } else if(packet.res !== undefined) {
-        var callback = WS_CALLBACK[packet.res];
-        callback(packet.content);
-        delete WS_CALLBACK[packet.res];
+    } else if(packet.id === "UpdateIgnored") {
+        if(!packet.res) {
+            for(let key in packet.content) {
+                console.log(key);
+                var value = packet.content[key];
+                if(value) {
+                    BLACKLISTED_VIDEOS[key] = true;
+                } else {
+                    delete BLACKLISTED_VIDEOS[key];
+                }
+            }
+        }
     } else {
         console.warn("[WS] Unknown packet received ", packet);
     }

@@ -162,7 +162,8 @@ const TYPE = {
     UPDATE: "update",
     GET_REDDIT_COUNT: "getRedditCount",
     SEND_REDDIT_COUNT: "sendRedditCount",
-    REDDIT_VISITED: "redditVisited"
+    REDDIT_VISITED: "redditVisited",
+    IGNORED_VIDEO: "ignoredVideo"
 }
 const HELPERS = {
     /**

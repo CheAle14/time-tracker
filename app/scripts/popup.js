@@ -22,6 +22,8 @@ port.onMessage.addListener(function(message, sender, response) {
         setTabs(message.data);
     } else if(message.type === TYPE.SEND_LATEST) {
         setLatest(message.data);
+    } else if(message.type == "provideBlacklist") {
+        setBlacklist(message.data);
     }
 });
 function postMessage(packet) {
@@ -58,6 +60,20 @@ function setTabs(data) {
             txt.innerText = ` on ${port.sender.url}`;
         }
         elem.appendChild(txt);
+        ls.appendChild(elem);
+    }
+}
+function setBlacklist(data) {
+    var ls = document.getElementById("vignored");
+    ls.innerHTML = "";
+    for(const vidId in data) {
+        var elem = document.createElement("li");
+        var anchor = document.createElement("a");
+        anchor.setAttribute("mlapi-id", vidId);
+        anchor.href = "#";
+        elem.appendChild(anchor);
+        anchor.innerText = `${vidId}`;
+        anchor.onclick = openNewId;
         ls.appendChild(elem);
     }
 }

@@ -267,5 +267,38 @@ setInterval(function() {
             });
         }
     }
+    for(let divContainer of document.getElementsByClassName("usertext-edit")) {
+        if(divContainer && divContainer.style && divContainer.style.display !== "none") {
+            if(!registered.has(divContainer)) {
+                registered.add(divContainer);
+                console.log("Found edit div: ", divContainer);
+                var textarea = divContainer.getElementsByClassName("md")[0].childNodes[0];
+                textarea.addEventListener("keypress", function(event) {
+                    if(event.code === "BracketRight") {
+                        var lastIndex = textarea.value.length - 1;
+                        var leftBracket = -1;
+                        for(var index = lastIndex; index >= 0; index--) {
+                            var charAt = textarea.value[index];
+                            if(charAt == "[") {
+                                leftBracket = index;
+                                break;
+                            }
+                        }
+                        if(leftBracket === -1) 
+                            return;
+                        var outerText = textarea.value.substring(leftBracket, lastIndex + 1) + "]";
+                        console.log("Full text: ", outerText);
+                        var innerText = outerText.substr(1, outerText.length - 2);
+                        console.log("Inner text: ", innerText);
+                        if(innerText.startsWith("dis.gd/")) {
+                            var uri = `](https://${innerText})`;
+                            textarea.value += uri;
+                            event.preventDefault();
+                        }
+                    }
+                });
+            }
+        }
+    }
     getInfos();
 }, 500);

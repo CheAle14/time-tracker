@@ -3,6 +3,7 @@ var port = chrome.runtime.connect();
 var CONNECTED = true;
 var LOADED = false;
 var HALTED = false;
+var IGNORED = false;
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var SEQUENCE = 0;
@@ -90,6 +91,31 @@ function portOnMessage(message, sender, response) {
                 window.location.href = "https://github.com/CheAle14/time-tracker/releases/latest";
             }
         }).showToast();
+    } else if(message.type === TYPE.IGNORED_VIDEO) {
+        console.log("This video has been ignored, so we shall play");
+        IGNORED = true;
+        LOADED = true;
+        try {
+            vidToolTip.AddFlavour(new VideoToolTipFlavour(`Video blacklisted from sync`, {color: "orange"}, 20000));
+            while(flavRemoveLoaded.length > 0) {
+                var id = flavRemoveLoaded[0];
+                vidToolTip.RemoveFlavour(id);
+                flavRemoveLoaded.splice(0, 1);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+        if(fetchingToast) {
+            fetchingToast.hideToast();
+            fetchingToast = null;
+        }
+        if(watchingToast) {
+            watchingToast.hideToast();
+            watchingToast = null;
+        }
+        play();
+    } else if(message.type === "alert") {
+        alert(message.data);
     }
     if(message.res) {
         var cb = CALLBACKS[message.res]
@@ -461,11 +487,15 @@ function play() {
 }
 
 function addVideoListeners() {
+    if(IGNORED)
+        return;
     var vid = getVideo();
     vid.onpause = function() {
         if(LOADED === false)
             return false;
         if(HALTED)
+            return;
+        if(IGNORED)
             return;
         console.log("Video play stopped.");
         if(CONNECTED)
@@ -474,6 +504,8 @@ function addVideoListeners() {
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
+        if(IGNORED)
+            return;
         if(HALTED) {
             pause();
             getVideo().currentTime = CACHE[WATCHING] || 0;
@@ -496,6 +528,8 @@ function addVideoListeners() {
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
+        if(IGNORED)
+            return;
         if(HALTED)
             return;
         saveTime();
@@ -517,6 +551,8 @@ function boot() {
 }
 
 function saveTime() {
+    if(IGNORED)
+        return;
     if(HALTED) {
         pause();
         pause();
@@ -530,6 +566,8 @@ function saveTime() {
 }
 
 function videoSync() {
+    if(IGNORED)
+        return;
     if(getVideo().paused || HALTED)
         return;
     saveTime();
@@ -567,6 +605,7 @@ setInterval(function() {
         WATCHING = w;
         if(w) {
             LOADED = false;
+            IGNORED = false;
             console.log(`Now watching ${w}`);
             vidToolTip.ClearFlavours();
             postMessage({type: "setWatching", data: WATCHING});
