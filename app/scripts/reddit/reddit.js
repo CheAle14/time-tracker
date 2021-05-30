@@ -258,12 +258,16 @@ setInterval(function() {
         if(!registered.has(btn)) {
             registered.add(btn);
             btn.addEventListener("click", function(event) {
-                var count = ourCount() + 1;
-                console.log(`We just sent a comment! Setting known comment count to ${count}`);
-                postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
-                    id: ID,
-                    count: count
-                }));
+                if(ID) {
+                    var count = ourCount() + 1;
+                    console.log(`We just sent a comment! Setting known comment count to ${count}`);
+                    postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
+                        id: ID,
+                        count: count
+                    }));
+                } else {
+                    console.warn("Sent a comment, but don't know on which post")
+                }
             });
         }
     }

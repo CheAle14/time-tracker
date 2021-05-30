@@ -276,6 +276,10 @@ function onMessage(message, sender, response) {
             url: `https://youtube.com/watch?v=${message.data}`
         });
     } else if(message.type === TYPE.REDDIT_VISITED) {
+        if(!message.data.id) {
+            console.warn("Received null thread ID, not handling.");
+            return;
+        }
         CACHE.Insert(new RedditCacheItem(message.data.id, new Date(), message.data.count));
         sendPacket({
             id: "VisitedThread",
