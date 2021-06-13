@@ -1,0 +1,15 @@
+.blue-accent.comment-visits-box {
+    color: #170058;
+    margin: 0px 5px 15px;
+    padding: 7px 10px 7px 7px;
+    max-width: 550px;
+}
+
+.blue-accent {
+    margin-top: 10px;
+    padding: 0 10px 5px;
+    background-color: #cfccff;
+    border: solid 1px #0f00e1;
+    color: #2e359a;
+    display: inline-block;
+}

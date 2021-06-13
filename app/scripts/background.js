@@ -89,9 +89,10 @@ function defaultInfo() {
 var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
-var URL = "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
+const URL = "http://localhost:8887/api/tracker" // "https://ml-api.uk.ms/api/tracker" // 
 const CACHE = new TrackerCache();
 const BLACKLISTED_VIDEOS = {};
+const API_VERSION = 2;
 var YT_GET_QUEUE = [];
 var YT_SET_QUEUE = {}
 var UP_TO_DATE = true;
@@ -402,7 +403,7 @@ function startWs() {
     }
     WS_CALLBACK = {};
     console.log(`Starting WS connection to ${url}`);
-    WS = new WebSocket(`${url}?session=${INFO.token}`);
+    WS = new WebSocket(`${url}?session=${INFO.token}&v=${API_VERSION}`);
     WS.onopen = wsOnOpen;
     WS.onclose = wsOnClose;
     WS.onmessage = wsOnMessage;

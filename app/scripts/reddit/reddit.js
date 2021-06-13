@@ -51,8 +51,6 @@ console.log("Connected to port");
 port.onMessage.addListener(function(message, sender, response) {
     console.debug("[PORT] <<", message);
 
-
-
     if(message.res !== undefined) {
         var cb = CALLBACKS[message.res]
         delete CALLBACKS[message.res]
@@ -73,13 +71,14 @@ function find(arr, p) {
 }
 
 function getCount(anchor) {
+    if(!anchor)
+        return 0;
     var text = anchor.innerText;
     var mtch = text.match(/[0-9]+/m);
     if(mtch) {
         console.log(mtch);
         return parseInt(mtch[0]);
     } else {
-        console.warn("Could not find count from anchor ", anchor);
         return 0;
     }
 }
@@ -113,7 +112,155 @@ function handleInfo(anchors, data) {
     if(!threadData) {
         return;
     }
-    highlight(new Date(threadData.cachedAt));
+    console.log(`Adding selection for `, threadData);
+
+    addTimeSelectionBox(threadData.cachedAt);
+    highlight(threadData.cachedAt[threadData.cachedAt.length - 1]);
+}
+
+/* original authored by TheBrain, at http://stackoverflow.com/a/12475270 */
+function time_ago(time, precision) {
+	if (precision == undefined) {
+		precision = 2;
+	}
+
+	switch (typeof time) {
+		case 'number': break;
+		case 'string': time = +new Date(time); break;
+		case 'object': if (time.constructor === Date) time = time.getTime(); break;
+		default: time = +new Date();
+	}
+
+	let time_formats = [
+		[         60,  'seconds',                   1], // 60
+		[        120, '1 minute', '1 minute from now'], // 60*2
+		[       3600,  'minutes',                  60], // 60*60,               60
+		[       7200,   '1 hour',   '1 hour from now'], // 60*60*2
+		[      86400,    'hours',                3600], // 60*60*24,            60*60
+		[     172800,    '1 day',          'Tomorrow'], // 60*60*24*2
+		[     604800,     'days',               86400], // 60*60*24*7,          60*60*24
+		[    1209600,   '1 week',         'Next week'], // 60*60*24*7*4*2
+		[    2419200,    'weeks',              604800], // 60*60*24*7*4,        60*60*24*7
+		[    4838400,  '1 month',        'Next month'], // 60*60*24*7*4*2
+		[   29030400,   'months',             2419200], // 60*60*24*7*4*12,     60*60*24*7*4
+		[   58060800,   '1 year',         'Next year'], // 60*60*24*7*4*12*2
+		[ 2903040000,    'years',            29030400], // 60*60*24*7*4*12*100, 60*60*24*7*4*12
+	];
+	let seconds = (+new Date() - time) / 1000;
+
+	if (seconds < 2) {
+		return 'just now';
+	}
+
+	let durations = [ ];
+
+	while (1) {
+		let i = 0,
+			format;
+
+		while (format = time_formats[i++]) {
+			if (seconds < format[0]) {
+				if (typeof format[2] == 'string') {
+					durations.push(format[1]);
+					break;
+				}
+				else {
+					durations.push(Math.floor(seconds / format[2]) + ' ' + format[1]);
+					break;
+				}
+			}
+		}
+
+		if (i > time_formats.length) {
+			return 'a very long time ago';
+		}
+
+		if (typeof time_formats[i - 1][2] == 'string') {
+			seconds -= time_formats[i][2];
+		}
+		else {
+			seconds -= Math.floor(seconds / time_formats[i - 1][2]) * time_formats[i - 1][2];
+		}
+
+		if (precision > i && durations.length > 1) {
+			durations.pop();
+			break;
+		}
+
+		if (seconds == 0) {
+			break;
+		}
+	}
+
+	let result;
+
+	result = durations.slice(-2).join(' and ') + ' ago';
+	durations  = durations.slice(0, -2);
+
+	if (durations.length) {
+		durations.push(result);
+		result = durations.join(', ');
+	}
+
+	return result;
+}
+
+function addTimeSelectionBox(times) {
+    var sitetable = document.getElementById(`siteTable_t3_${ID}`);
+    let commentarea = document.getElementsByClassName('commentarea')[0]
+
+    console.log(commentarea, sitetable);
+
+    var selectionBox = document.createElement("div");
+    selectionBox.classList.add("rounded", "blue-accent", "comment-visits-box");
+
+    var titleBox = document.createElement("div");
+    titleBox.classList.add("title");
+    selectionBox.appendChild(titleBox);
+
+    titleBox.innerHTML = "Highlight comments posted since previous visit: ";
+
+    var selectElem = document.createElement("select");
+    selectElem.id = "mlapi-visits";
+
+    for(var time of times) {
+        var opt = document.createElement("option");
+        opt.value = time;
+        opt.textContent = time_ago(time);
+        selectElem.appendChild(opt);
+    }
+    selectElem.children[selectElem.children.length - 1].setAttribute("selected", "")
+
+    titleBox.appendChild(selectElem);
+
+    selectElem.addEventListener("change", update_highlighting);
+
+    commentarea.insertBefore(selectionBox, sitetable);
+}
+
+function update_highlighting(event) {
+    console.log(event);
+    reset_highlighting();
+    highlight(parseInt(event.target.value));
+}
+
+function reset_highlighting() {
+    console.log("Resetting highlighting");
+    let comments = document.getElementsByClassName('hnc_new');
+    for (let i = comments.length; i > 0; i--) {
+        let comment = comments[i - 1];
+        comment.classList.remove('hnc_new');
+
+        let elements = {
+            'comment': comment,
+            'text': comment.getElementsByClassName('usertext-body')[0].firstElementChild,
+            'time': comment.getElementsByTagName('time')[0],
+        };
+
+        for (let element in elements) {
+            elements[element].removeAttribute('style');
+        }
+    }
 }
 
 function highlight(since) {
@@ -121,6 +268,7 @@ function highlight(since) {
 			username
 		;
 
+    console.log(`Highlighting since ${since}, ${time_ago(since)}`);
 
     if (document.body.classList.contains('loggedin')) {
         username = document.getElementsByClassName('user')[0].firstElementChild.textContent;
@@ -150,8 +298,9 @@ function highlight(since) {
             let elements = {
                 'comment': comment,
                 'text': comment.getElementsByClassName('usertext-body')[0].firstElementChild,
-                'time': comment.getElementsByClassName('live-timestamp')[0],
+                'time': comment.getElementsByClassName('live-timestamp')[0] ?? comment.getElementsByClassName("edited-timestamp")[0],
             };
+            console.log(elements);
             elements["time"].setAttribute('style', generate_comment_style(time, since));
         }
     }
@@ -209,8 +358,12 @@ function getThreadCommentLinks() {
     return anchors;
 }
 
+function ourAnchor() {
+    return find(getThreadCommentLinks(), (x) => getThingId(x) == ID);
+}
+
 function ourCount() {
-    var anchor = find(getThreadCommentLinks(), (x) => getThingId(x) == ID);
+    var anchor = ourAnchor();
     if(anchor) {
         console.log("For out count, found anchor: ", anchor);
         return getCount(anchor);
@@ -259,8 +412,10 @@ setInterval(function() {
             registered.add(btn);
             btn.addEventListener("click", function(event) {
                 if(ID) {
-                    var count = ourCount() + 1;
+                    var anchor = ourAnchor();
+                    var count = getCount(anchor) + 1;
                     console.log(`We just sent a comment! Setting known comment count to ${count}`);
+                    anchor.innerText = `${count} messages`;
                     postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
                         id: ID,
                         count: count
