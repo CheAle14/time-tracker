@@ -89,7 +89,7 @@ function defaultInfo() {
 var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
-const URL = "http://localhost:8887/api/tracker" // "https://ml-api.uk.ms/api/tracker" // 
+const URL =  "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
 const CACHE = new TrackerCache();
 const BLACKLISTED_VIDEOS = {};
 const API_VERSION = 2;
