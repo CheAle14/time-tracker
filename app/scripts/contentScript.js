@@ -78,7 +78,7 @@ function portOnMessage(message, sender, response) {
             } catch {}
             vidToolTip.Error = new VideoToolTipFlavour(message.data.display, {color: "red"}, -1);
         }
-    } else if(message.type === TYPE.UPDATE) {
+    } else if(message.type === INTERNAL.UPDATE) {
         Toastify({
             text: `Update available: ${message.data}; click to go to github`,
             duration: -1,
@@ -91,7 +91,7 @@ function portOnMessage(message, sender, response) {
                 window.location.href = "https://github.com/CheAle14/time-tracker/releases/latest";
             }
         }).showToast();
-    } else if(message.type === TYPE.IGNORED_VIDEO) {
+    } else if(message.type === INTERNAL.IGNORED_VIDEO) {
         console.log("This video has been ignored, so we shall play");
         IGNORED = true;
         LOADED = true;

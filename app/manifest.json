@@ -1,7 +1,7 @@
 {
     "name": "Video Time Tracker",
     "description": "Tracks the time watched of videos, synced across devices",
-    "version": "1.8.11",
+    "version": "1.8.12",
     "permissions": [
         "storage",
         "activeTab",
@@ -26,8 +26,8 @@
                 "https://reddit.com/*",
                 "https://*.reddit.com/*"
             ],
-            "js": ["tinycolor/tinycolor.js", "scripts/classes.js", "scripts/reddit/reddit.js"],
-            "css": ["reddit.css"]
+            "js": ["tinycolor/tinycolor.js", "toast/toast.js", "scripts/classes.js", "scripts/reddit/reddit.js"],
+            "css": ["reddit.css", "toast/toast.css"]
         }
     ],
     "background": {

@@ -13,10 +13,16 @@ class InternalPacket {
  * Packets sent to or from websocket connection
  */
 class WebSocketPacket {
+    /**
+     * Creates a packet to be sent over the websocket with provided information
+     * @param {EXTERNAL} id 
+     * @param {*} content 
+     * @param {number} sequence 
+     */
     constructor(id, content, sequence) {
         this.id = id;
         this.content = content;
-        this.seq = sequence || 0;
+        this.seq = sequence || 1;
     }
 }
 
@@ -31,7 +37,7 @@ class StatePacket extends InternalPacket {
      * @param {string} logMsg Text to log to console
      */
     constructor(playing, displayToolTip, logMsg) {
-        super(TYPE.SET_STATE, {
+        super(INTERNAL.SET_STATE, {
             play: !!playing,
             display: displayToolTip,
             log: logMsg
@@ -145,6 +151,126 @@ class TrackerCache {
     }
 }
 
+class WebSocketQueue {
+    constructor() {
+        this._queue = [];
+        this._waiting = 0;
+        this._last = 0;
+        this._saved = false;
+        this._retries = 0;
+    }
+
+    /**
+     * Queues a packet to be sent along the websocket
+     * @param {WebSocketPacket} packet 
+     */
+    Enqueue(packet) {
+        this._saved = false;
+        this._queue.push(packet);
+    }
+
+    /**
+     * Gets an array of packets to persist
+     */
+    Perist() {
+        var a = [];
+        for(let item of this._queue) {
+            switch(item.id) {
+                // Ignore packets which get information.
+                // If the browser is restarted, then the callbacks will never fire anyway,
+                // so the may as well discard the packets from permanent persistence
+                case EXTERNAL.GET_LATEST:
+                case EXTERNAL.GET_THREADS:
+                case EXTERNAL.GET_VERSION:
+                case EXTERNAL.GET_REDDIT_COUNT:
+                case EXTERNAL.GET_TIMES:
+                    continue;
+                default:
+                    a.push(item);
+            }
+        }
+        return a;
+    }
+
+    Get(seq) {
+        for(var i = 0; i < this._queue.length; i++) {
+            if(this._queue[i].seq === seq) {
+                return this._queue[i];
+            }
+        }
+        return null;
+    }
+
+    Waiting() {
+        if(this._waiting) {
+            var x = {
+                packet: this.Get(this._waiting),
+                firstSent: this._last,
+                retries: this._retries
+            }
+        }
+        return x;
+    }
+
+    /**
+     * Gets the time, in ms, after which we should retry the given packet type
+     * @param {number} packetId 
+     */
+    RetryAfter(packetId) {
+        if(typeof packetId === "object") {
+            if(packetId.firstSent) {
+                return this.RetryAfter(packetId.packet);
+            } 
+            return this.RetryAfter(packetId.id);
+        }
+
+        switch(packetId) {
+            case EXTERNAL.GET_THREADS:
+            case EXTERNAL.GET_TIMES:
+            case EXTERNAL.GET_LATEST:
+                return 10_000;
+            default:
+                return 5_000;
+        }
+    }
+
+    /**
+     * Gets the first packet in the queue
+     */
+    Next() {
+        if(this._waiting === 0 && this._queue.length > 0) {
+            var p = this._queue[0];
+            this._waiting = p.seq;
+            this._last = Date.now();
+            this._retries = 0;
+            return p;
+        }
+        return null;
+    }
+
+    Remove(seq) {
+        for(var i = 0; i < this._queue.length; i++) {
+            if(this._queue[i].seq === seq) {
+                this._queue.splice(i, 1);
+                this._saved = false;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    MarkDone(seq) {
+        this._waiting = 0;
+        this._last = null;
+        this._retries = 0;
+        return this.Remove(seq);
+    }
+
+    Length() {
+        return this._queue.length;
+    }
+}
+
 const CACHE_KIND = {
     YOUTUBE: "video",
     REDDIT: "reddit"
@@ -152,9 +278,9 @@ const CACHE_KIND = {
 
 
 /**
- * Internal Packet Types 
+ * Types for packets sent internally, between background and content scripts.
  */
-const TYPE = {
+const INTERNAL = {
     SET_STATE: "setState",
     GET_LATEST: "getLatest",
     SEND_LATEST: "sendLatest",
@@ -165,6 +291,21 @@ const TYPE = {
     REDDIT_VISITED: "redditVisited",
     IGNORED_VIDEO: "ignoredVideo"
 }
+
+/**
+ * Ids for packets sent from background to websocket.
+ */
+const EXTERNAL = {
+    UPDATE_IGNORED_VIDEOS: "UpdateIgnored",
+    VISITED_THREAD: "VisitedThread",
+    GET_THREADS: "GetThreads",
+    GET_TIMES: "GetTimes",
+    GET_LATEST: "GetLatest",
+    SET_TIMES: "SetTimes",
+    GET_VERSION: "GetVersion"
+}
+
+
 const HELPERS = {
     /**
      * Returns the formatted representation of the time in seconds (eg, hh:mm:ss or mm:ss if below an hour)

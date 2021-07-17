@@ -20,7 +20,7 @@ port.onMessage.addListener(function(message, sender, response) {
         btn.disabled = false;
     } else if(message.type === "sendData") {
         setTabs(message.data);
-    } else if(message.type === TYPE.SEND_LATEST) {
+    } else if(message.type === INTERNAL.SEND_LATEST) {
         setLatest(message.data);
     } else if(message.type == "provideBlacklist") {
         setBlacklist(message.data);
@@ -126,7 +126,7 @@ function setLatest(data) {
 
 function openNewId(event) {
     const vidId = this.getAttribute("mlapi-id");
-    postMessage(new InternalPacket(TYPE.NAVIGATE_ID, vidId));
+    postMessage(new InternalPacket(INTERNAL.NAVIGATE_ID, vidId));
 }
 
 function navigateToPort(event) {

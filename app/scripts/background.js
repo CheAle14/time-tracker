@@ -28,7 +28,7 @@ chrome.contextMenus.onClicked.addListener(function(menu, tab) {
         BLACKLISTED_VIDEOS[id] = true;
     }
     sendPacket({
-        id: "UpdateIgnored",
+        id: EXTERNAL.UPDATE_IGNORED_VIDEOS,
         content: x
     }, function(resp) {
         console.log("Gotten resp: ", resp);
@@ -89,18 +89,22 @@ function defaultInfo() {
 var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
-const URL =  "https://ml-api.uk.ms/api/tracker" // "http://localhost:8887/api/tracker" //
+const DEBUG = false;
+const URL =  DEBUG ? "http://localhost:8887/api/tracker" : "https://ml-api.uk.ms/api/tracker";
 const CACHE = new TrackerCache();
 const BLACKLISTED_VIDEOS = {};
 const API_VERSION = 2;
+var WS_QUEUE = new WebSocketQueue();
 var YT_GET_QUEUE = [];
 var YT_SET_QUEUE = {}
 var UP_TO_DATE = true;
-var QUEUE_IDS = {"get": 0, "set": 0};
+var INTERVAL_IDS = {"get": 0, "set": 0, "ws": 0};
 var WS = null;
+
 var WS_CALLBACK = {};
+var WS_NORESPONSE = {};
 var WS_FAILED = 0;
-var SEQUENCE = 0;
+var SEQUENCE = 1;
 const CACHE_TIMEOUT = 20000;
 console.log("Background started");
 
@@ -159,11 +163,8 @@ chrome.runtime.onConnect.addListener(function(thing) {
     thing.id = id(thing);
     thing.name = getName(thing);
     if(INFO.name === null && !isPopupUrl(thing.sender.url)) {
-        thing.postMessage({type: "error", data: "Connection was not established to server. Retrying - reload page in a bit"});
-        thing.disconnect();
+        thing.postMessage({type: "error", data: "Connection was not established to server."});
         setup();
-        console.log(`Refused connection from ${thing.id} due to invalid startup`)
-        return;
     }
     console.log(thing);
     console.log(`Connecting to ${thing.name}`);
@@ -226,7 +227,7 @@ function onMessage(message, sender, response) {
         }
         if(BLACKLISTED_VIDEOS[vidId]) {
             console.log(`${getName(sender)} has begun watching an ignored video, will tell them to continue`);
-            sender.postMessage(new InternalPacket(TYPE.IGNORED_VIDEO, undefined));
+            sender.postMessage(new InternalPacket(INTERNAL.IGNORED_VIDEO, undefined));
             return;
         }
         var alsoWatching = getPortAlreadyWatching(vidId);
@@ -270,20 +271,20 @@ function onMessage(message, sender, response) {
         }
     } else if(message.type === "getLatest") {
         getLatestWatched(function(obj) {
-            sender.postMessage(new InternalPacket(TYPE.SEND_LATEST, obj));
+            sender.postMessage(new InternalPacket(INTERNAL.SEND_LATEST, obj));
         })
-    } else if(message.type === TYPE.NAVIGATE_ID) {
+    } else if(message.type === INTERNAL.NAVIGATE_ID) {
         chrome.tabs.create({
             url: `https://youtube.com/watch?v=${message.data}`
         });
-    } else if(message.type === TYPE.REDDIT_VISITED) {
+    } else if(message.type === INTERNAL.REDDIT_VISITED) {
         if(!message.data.id) {
             console.warn("Received null thread ID, not handling.");
             return;
         }
         CACHE.Insert(new RedditCacheItem(message.data.id, new Date(), message.data.count));
         sendPacket({
-            id: "VisitedThread",
+            id: EXTERNAL.VISITED_THREAD,
             content: message.data
         }, function(x) {
             if(message.seq !== undefined) {
@@ -292,7 +293,7 @@ function onMessage(message, sender, response) {
                 sender.postMessage(resp);
             }
         });
-    } else if(message.type === TYPE.GET_REDDIT_COUNT) {
+    } else if(message.type === INTERNAL.GET_REDDIT_COUNT) {
         var cached = {};
         var remain = [];
         for(let threadId of message.data) {
@@ -311,7 +312,7 @@ function onMessage(message, sender, response) {
             }
         } else {
             sendPacket({
-                id: "GetThreads",
+                id: EXTERNAL.GET_THREADS,
                 content: message.data
             }, function(x) {
                 for(let threadId in x) {
@@ -326,6 +327,8 @@ function onMessage(message, sender, response) {
                     resp.res = message.seq
                     sender.postMessage(resp);
                 }
+            }, function() {
+                sender.postMessage({type: "fail", fail: message.seq});
             })
         }
         
@@ -339,6 +342,22 @@ function wsOnOpen() {
         firstOpen = false;
         checkVersion(null);
     }
+    chrome.storage.local.get(["wsQueue"], function({wsQueue}) {
+        console.log(wsQueue);
+        if(typeof wsQueue === "string") 
+            wsQueue = JSON.parse(wsQueue);
+        else if (typeof wsQueue === "undefined" || typeof wsQueue === "null")
+            wsQueue = [];
+        console.log("Loaded prior WS queues: ", wsQueue);
+        for(let item of wsQueue) {
+            WS_QUEUE.Remove(item.id); // removes it if it exists
+            WS_QUEUE.Enqueue(item);
+        }
+        if(WS_QUEUE.Length() > 0) {
+            console.log("Re-starting queue interval as there's ", WS_QUEUE.Length(), " items to be sent");
+            INTERVAL_IDS.ws = setInterval(wsInterval, 200);
+        }
+    })
 }
 function wsOnClose(event) {
     console.log("[WS] Disconnected ", event);
@@ -347,11 +366,14 @@ function wsOnClose(event) {
             "Disconnected from main server",
             `WebSocket connection lost, attempted ${WS_FAILED} retries`));
     }
+    clearInterval(INTERVAL_IDS.ws);
+    INTERVAL_IDS.ws = 0;
     WS_FAILED++;
     setTimeout(function() {
         console.log("[WS] Retrying connection...]");
         startWs();
     }, 5000 + (1000 * WS_FAILED));
+    
 }
 function wsOnMessage(event) {
     if(WS_FAILED > 0) {
@@ -361,9 +383,22 @@ function wsOnMessage(event) {
     var packet = JSON.parse(event.data);
     console.log("[WS] <<", packet);
     if(packet.res !== undefined) {
+        WS_QUEUE.MarkDone(packet.res);
+        if(WS_QUEUE.Length === 0) {
+            console.log("Ending WS queue interval");
+            clearInterval(INTERVAL_IDS.ws);
+            INTERVAL_IDS.ws = 0;
+        }
+        var onfail = WS_NORESPONSE[packet.res];
+        if(onfail) {
+            clearTimeout(onfail.timer);
+            delete WS_NORESPONSE[packet.res];
+        }
         var callback = WS_CALLBACK[packet.res];
-        callback(packet.content);
-        delete WS_CALLBACK[packet.res];
+        if(callback) {
+            callback(packet.content);
+            delete WS_CALLBACK[packet.res];
+        }
     } else if(packet.id === "DirectRatelimit") {
         console.log(`Ratelimits updated`, packet.content);
         INFO.interval = packet.content;
@@ -383,15 +418,74 @@ function wsOnMessage(event) {
                 }
             }
         }
+    } else if(packet.retry) {
+        console.log("[WS] Received duplicate retry packet, discarding ", packet);
     } else {
         console.warn("[WS] Unknown packet received ", packet);
     }
 }
-function sendPacket(packet, callback) {
+function sendPacket(packet, callback, onfail) {
     packet.seq = SEQUENCE++;
-    console.log(`[WS] >>`, packet);
+    console.debug(`[Queued] `, packet);
     WS_CALLBACK[packet.seq] = callback;
-    WS.send(JSON.stringify(packet));
+    if(onfail) {
+        var c = setTimeout(function() {
+            delete WS_NORESPONSE[packet.seq];
+            console.log("Sending timeout for ", packet);
+            onfail();
+        }, WS_QUEUE.RetryAfter(packet) * 3);
+        WS_NORESPONSE[packet.seq] = {f: onfail, timer: c};
+    }
+    WS_QUEUE.Enqueue(packet);
+    
+    if(WS && WS.readyState == WebSocket.OPEN) {
+        if(!INTERVAL_IDS.ws) {
+            console.log("Starting WS queue due to new packet");
+            INTERVAL_IDS.ws = setInterval(wsInterval, 5000);
+        }
+    } else {
+        saveQueue();
+    }
+}
+
+function saveQueue() {
+    var q = WS_QUEUE.Perist();
+    chrome.storage.local.set({wsQueue: q}, function() {
+        if(chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError);
+        } else {
+            console.log("Saved WS queue to local storage: ", q);
+            WS_QUEUE._saved = true;
+        }
+    });
+}
+
+function wsInterval() {
+    if(WS.readyState != WebSocket.OPEN) {
+        clearInterval(INTERVAL_IDS.ws);
+        INTERVAL_IDS.ws = 0;
+        if(!WS_QUEUE._saved) {
+            saveQueue();
+        }
+        return;
+    }
+    var last = WS_QUEUE.Waiting();
+    if(last) {
+        var diff = Date.now() - last.firstSent;
+        var retryAfter = WS_QUEUE.RetryAfter(last);
+        if(diff > retryAfter) {
+            console.log(`%c[WS] Retrying ${last.retries} time after ${diff}ms >> `, "color:orange;", last.packet);
+            WS_QUEUE._retries++;
+            WS_QUEUE._last = Date.now();
+            WS.send(JSON.stringify(last.packet));
+        }
+    } else {
+        var next = WS_QUEUE.Next();
+        if(next) {
+            console.log(`[WS] >> `, next);
+            WS.send(JSON.stringify(next));
+        }
+    }
 }
 
 function startWs() {
@@ -467,7 +561,7 @@ function getTimes(timesObject, callback) {
         return;
     }
     sendPacket({
-        id: "GetTimes",
+        id: EXTERNAL.GET_TIMES,
         content: query,
     }, function(response) {
         console.log("Got callback:", response);
@@ -479,7 +573,7 @@ function getTimes(timesObject, callback) {
 }
 
 function getLatestWatched(callback) {
-    sendPacket(new WebSocketPacket("GetLatest", null), function(data) {
+    sendPacket(new WebSocketPacket(EXTERNAL.GET_LATEST, null), function(data) {
         callback(data);
     });
 }
@@ -487,7 +581,7 @@ function getLatestWatched(callback) {
 async function setTimes(timesObject, callback) {
     console.log(timesObject);
     sendPacket({
-        id: "SetTimes",
+        id: EXTERNAL.SET_TIMES,
         content: timesObject
     }, function(respContent) {
         console.log(`Set times: ${respContent}`);
@@ -505,7 +599,7 @@ function processGetQueue() {
         });
     }
     if(STOP_QUEUE_NEXT) {
-        clearInterval(QUEUE_IDS.get);
+        clearInterval(INTERVAL_IDS.get);
         console.log("Get queue ceased")
     }
 }
@@ -519,7 +613,7 @@ function processSetQueue() {
         });
     }
     if(STOP_QUEUE_NEXT) {
-        clearInterval(QUEUE_IDS.set);
+        clearInterval(INTERVAL_IDS.set);
         console.log("Set queue ceased");
     }
 }
@@ -539,13 +633,13 @@ function handleVersion(webVersion) {
     } else if(compare < 0) {
         console.warn("Running older version")
         UP_TO_DATE = webVersion;
-        postMessage(new InternalPacket(TYPE.UPDATE, UP_TO_DATE));
+        postMessage(new InternalPacket(INTERNAL.UPDATE, UP_TO_DATE));
     }
 }
 
 async function checkVersion(alarm) {
     sendPacket({
-        id: "GetVersion",
+        id: EXTERNAL.GET_VERSION,
         content: null
     }, handleVersion);
 }
@@ -558,10 +652,10 @@ async function alarmRaised(alarm) {
 
 function startProcessQueues() {
     STOP_QUEUE_NEXT = false;
-    clearInterval(QUEUE_IDS.get);
-    clearInterval(QUEUE_IDS.set);
-    QUEUE_IDS.get = setInterval(processGetQueue, INFO.interval.get);
-    QUEUE_IDS.set = setInterval(processSetQueue, INFO.interval.set);
+    clearInterval(INTERVAL_IDS.get);
+    clearInterval(INTERVAL_IDS.set);
+    INTERVAL_IDS.get = setInterval(processGetQueue, INFO.interval.get);
+    INTERVAL_IDS.set = setInterval(processSetQueue, INFO.interval.set);
 }
 
 

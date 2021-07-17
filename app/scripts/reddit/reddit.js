@@ -2,15 +2,23 @@ console.log("Reddit content script loaded!");
 
 var SEQUENCE = 1;
 var CALLBACKS = {};
+var ERRORS = {};
+
 /**
  * Sends a message to the port
- * @param {InternalPacket} packet 
- * @param {function} callback 
+ * @param {InternalPacket} packet The packet to send
+ * @param {function} callback Function called on success
+ * @param {function} onfail Function called on failure
  */
-function postMessage(packet, callback) {
+function postMessage(packet, callback, onfail) {
     if(callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
+    }
+    if(onfail) {
+        if(!packet.seq)
+            packet.seq = SEQUENCE++;
+        ERRORS[packet.seq] = onfail;
     }
     console.debug(`[PORT] >>`, packet);
     port.postMessage(packet);
@@ -48,16 +56,44 @@ const config = {
 };
 var port = chrome.runtime.connect();
 console.log("Connected to port");
+var errorToast = null;
 port.onMessage.addListener(function(message, sender, response) {
     console.debug("[PORT] <<", message);
 
     if(message.res !== undefined) {
         var cb = CALLBACKS[message.res]
         delete CALLBACKS[message.res]
+        delete ERRORS[message.res];
         console.log(`[PORT] Invoking callback handler for ${message.res}`);
         cb(message);
     }
+    if(message.fail !== undefined) {
+        var cb = ERRORS[message.fail];
+        delete ERRORS[message.fail];
+        cb(message);
+    }
+    if(message.type === "error") {
+        showError(message.data);
+    }
 });
+
+function showError(text) {
+    if(errorToast) {
+        errorToast.toastElement.innerText = text;
+    } else {
+        errorToast = Toastify({
+            text: text,
+            duration: -1,
+            close: true,
+            gravity: "top", // `top` or `bottom`
+            position: "right", // `left`, `center` or `right`
+            backgroundColor: "red",
+            stopOnFocus: true, // Prevents dismissing of toast on hover
+        })
+        errorToast.showToast();
+    }
+}
+
 port.onDisconnect.addListener(function() {
     console.log("Disconnected from extension background, reloading page!");
     window.location.reload();
@@ -387,17 +423,25 @@ function getInfos() {
     }
     if(arr.length === 0)
         return;
-    postMessage(new InternalPacket(TYPE.GET_REDDIT_COUNT, arr), function(r) {
+    postMessage(new InternalPacket(INTERNAL.GET_REDDIT_COUNT, arr), function(r) {
         //console.log("Callback", r);
-        if(ID) {
-            var anchor = find(elements, (x) => getThingId(x) == ID);
-            postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
-                id: ID,
-                count: getCount(anchor)
-            }));
-        }
+        sendVisited(elements);
         handleInfo(elements, r.data);
+    }, function() {
+        console.log("Failed to get reddit count, attempting to send thread visit if relevant");
+        sendVisited(elements); // since packet will be persisted anyway
+        showError("Failed to fetch thread information");
     })
+}
+
+function sendVisited(elements) {
+    if(ID) {
+        var anchor = find(elements, (x) => getThingId(x) == ID);
+        postMessage(new InternalPacket(INTERNAL.REDDIT_VISITED, {
+            id: ID,
+            count: getCount(anchor)
+        }));
+    }
 }
 
 getInfos();
@@ -416,7 +460,7 @@ setInterval(function() {
                     var count = getCount(anchor) + 1;
                     console.log(`We just sent a comment! Setting known comment count to ${count}`);
                     anchor.innerText = `${count} messages`;
-                    postMessage(new InternalPacket(TYPE.REDDIT_VISITED, {
+                    postMessage(new InternalPacket(INTERNAL.REDDIT_VISITED, {
                         id: ID,
                         count: count
                     }));
