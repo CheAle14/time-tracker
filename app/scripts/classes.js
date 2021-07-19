@@ -175,18 +175,13 @@ class WebSocketQueue {
     Perist() {
         var a = [];
         for(let item of this._queue) {
-            switch(item.id) {
-                // Ignore packets which get information.
-                // If the browser is restarted, then the callbacks will never fire anyway,
-                // so the may as well discard the packets from permanent persistence
-                case EXTERNAL.GET_LATEST:
-                case EXTERNAL.GET_THREADS:
-                case EXTERNAL.GET_VERSION:
-                case EXTERNAL.GET_REDDIT_COUNT:
-                case EXTERNAL.GET_TIMES:
+            if([EXTERNAL.GET_LATEST,
+                EXTERNAL.GET_THREADS,
+                EXTERNAL.GET_VERSION,
+                EXTERNAL.GET_TIMES].includes(item.id)) {
                     continue;
-                default:
-                    a.push(item);
+            } else {
+                a.push(item);
             }
         }
         return a;
@@ -224,14 +219,11 @@ class WebSocketQueue {
             return this.RetryAfter(packetId.id);
         }
 
-        switch(packetId) {
-            case EXTERNAL.GET_THREADS:
-            case EXTERNAL.GET_TIMES:
-            case EXTERNAL.GET_LATEST:
-                return 10_000;
-            default:
-                return 5_000;
-        }
+        if(packetId === EXTERNAL.GET_THREADS 
+            || packetId === EXTERNAL.GET_TIMES
+            || packetId === EXTERNAL.GET_LATEST)
+            return 10000;
+        return 5000;
     }
 
     /**
