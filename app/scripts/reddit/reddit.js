@@ -247,10 +247,10 @@ function addTimeSelectionBox(times) {
 
     console.log(commentarea, sitetable);
 
-    var selectionBox = document.createElement("div");
+    var selectionBox = document.createElement("span");
     selectionBox.classList.add("rounded", "blue-accent", "comment-visits-box");
 
-    var titleBox = document.createElement("div");
+    var titleBox = document.createElement("span");
     titleBox.classList.add("title");
     selectionBox.appendChild(titleBox);
 
@@ -423,14 +423,52 @@ function getInfos() {
     }
     if(arr.length === 0)
         return;
+    var resPages = document.getElementsByClassName("NERPageMarker");
+    var el = null;
+    if(resPages.length > 0) {
+        var latestPage = resPages[resPages.length - 1];
+        var span = document.createElement("span");
+
+        var gearIcon = latestPage.children[1];
+        latestPage.insertBefore(span, gearIcon);        
+
+
+        span.classList.add("loader-container");
+        el = span;
+
+
+
+        var loader = document.createElement("div");
+        loader.classList.add("loader");
+        span.appendChild(loader);
+
+    }
+    var addDone = function(sucess) {
+        var done = document.createElement("img");
+        done.src = sucess ? "https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Symbol_confirmed.svg/180px-Symbol_confirmed.svg.png" : "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Symbol_unrelated.svg/180px-Symbol_unrelated.svg.png";
+        done.classList.add("loader-done")
+
+        el.style.width = "16px";
+        el.style.height = "16px"
+        el.innerHTML = "";
+        el.appendChild(done);
+    }
     postMessage(new InternalPacket(INTERNAL.GET_REDDIT_COUNT, arr), function(r) {
         //console.log("Callback", r);
         sendVisited(elements);
         handleInfo(elements, r.data);
+
+        console.log("Loading element: ", el);
+        if(el) {
+            addDone(true);
+        }
     }, function() {
         console.log("Failed to get reddit count, attempting to send thread visit if relevant");
         sendVisited(elements); // since packet will be persisted anyway
         showError("Failed to fetch thread information");
+        if(el) {
+            addDone(false);
+        }
     })
 }
 
@@ -470,12 +508,12 @@ setInterval(function() {
             });
         }
     }
-    for(let divContainer of document.getElementsByClassName("usertext-edit")) {
-        if(divContainer && divContainer.style && divContainer.style.display !== "none") {
-            if(!registered.has(divContainer)) {
-                registered.add(divContainer);
-                console.log("Found edit div: ", divContainer);
-                var textarea = divContainer.getElementsByClassName("md")[0].childNodes[0];
+    for(let spanContainer of document.getElementsByClassName("usertext-edit")) {
+        if(spanContainer && spanContainer.style && spanContainer.style.display !== "none") {
+            if(!registered.has(spanContainer)) {
+                registered.add(spanContainer);
+                console.log("Found edit span: ", spanContainer);
+                var textarea = spanContainer.getElementsByClassName("md")[0].childNodes[0];
                 textarea.addEventListener("keypress", function(event) {
                     if(event.code === "BracketRight") {
                         var lastIndex = textarea.value.length - 1;

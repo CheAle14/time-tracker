@@ -13,3 +13,30 @@
     color: #2e359a;
     display: inline-block;
 }
+
+.loader-container {
+    width: 12px;
+    height: 12px;
+    margin: 0 10px 0 0;
+    position: relative;
+    float: right;
+}
+
+.loader-done {
+    width: 100%;
+    height: 100%;
+}
+
+.loader {
+    border: 5px solid #f3f3f3; /* Light grey */
+    border-top: 5px solid #3498db; /* Blue */
+    border-radius: 50%;
+    animation: spin 2s linear infinite;
+    width:100%;
+    height: 100%;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
