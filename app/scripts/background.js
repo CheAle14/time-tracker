@@ -472,8 +472,17 @@ function wsInterval() {
     var last = WS_QUEUE.Waiting();
     if(last) {
         var diff = Date.now() - last.firstSent;
-        var retryAfter = WS_QUEUE.RetryAfter(last);
+        var retryAfter = WS_QUEUE.RetryAfter(last) * (last.retries + 1);
         if(diff > retryAfter) {
+            if(last.retries >= 5) {
+                // Clearly there's an issue of some kind - let's disconnect and start over.
+                console.error("Closing websocket connection - we've attempted too many retries.")
+                WS.close(1000, "Retry too many times");
+                WS_QUEUE._retries = 0;
+                clearInterval(INTERVAL_IDS.ws);
+                INTERVAL_IDS.ws = 0;
+                return;
+            }
             console.log(`%c[WS] Retrying ${last.retries} time after ${diff}ms >> `, "color:orange;", last.packet);
             WS_QUEUE._retries++;
             WS_QUEUE._last = Date.now();
