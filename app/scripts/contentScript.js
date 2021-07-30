@@ -401,16 +401,54 @@ function setCurrentTimeCorrect() {
 
 }
 
+/**
+ * Gets the time, in seconds, that is specified in the `?t=` query param.  
+ * Null if there isn't any.
+ */
+function getQueryTime() {
+    const urlSearchParams = new URLSearchParams(window.location.search);
+    var time = urlSearchParams.get("t");
+    if(!time) {
+        return null;
+    }
+    let re = /(?<hour>\d+h)?(?<minute>\d+m)?(?<second>\d+s?)/; // matches (1h)(2m)(30s) and 3690s?
+
+    var result = time.match(re);
+    console.log(result);
+
+    var hr = result.groups.hour ?? "0h";
+    var mn = result.groups.minute ?? "0m";
+    var sc = result.groups.second ?? "0s";
+
+    var hours = parseInt(hr.substring(0, hr.length - 1));
+    var minutes = parseInt(mn.substring(0, mn.length - 1));
+    var seconds = parseInt(sc.substring(0, sc.length - 1));
+
+    console.log(hours, minutes, seconds);
+    return (hours * 3600) + (minutes * 60) + seconds;
+}
+
 function setTimes() {
     var mustFetch = setThumbnails();
 
     if(WATCHING !== null && LOADED === false) {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
+            var query = getQueryTime();
+            if(query) {
+                try {
+                    vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${data}`, {color: "white"}, 20000));
+                } catch(error) {
+                    console.error(error);
+                }
+                data = query;
+                CACHE[WATCHING] = query;
+            }
             console.log(`Setting video currentTime to ${data}`);
             try {
                 var time = HELPERS.ToTime(data);
-                vidToolTip.AddFlavour(new VideoToolTipFlavour(`Loaded ${time}`, {color: "orange"}, 20000));
+                var whereFrom = !!query ? "Param" : "Loaded"
+                vidToolTip.AddFlavour(new VideoToolTipFlavour(`${whereFrom} ${time}`, {color: "orange"}, 20000));
                 while(flavRemoveLoaded.length > 0) {
                     var id = flavRemoveLoaded[0];
                     vidToolTip.RemoveFlavour(id);
