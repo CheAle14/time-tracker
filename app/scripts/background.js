@@ -249,8 +249,11 @@ function onMessage(message, sender, response) {
             //delete CACHE[vidId]; // ensure it is fresh
             // fresh from server perspective, but what if they're watching it
             // in this client? then cache is the most up-to-date...
-            getTimes([message.data], function(obj) {
-                postMessage({"type": "gotTimes", data: obj});
+            getTimes([message.data], function(times) {
+                    postMessage({"type": "gotTimes", data: times});
+            }, function(error) {
+                error.res = message.seq;
+                sender.postMessage(error);
             }); // Immediately begin fetching video time to save load times
         }
     } else if(message.type === "getData") {
@@ -327,8 +330,8 @@ function onMessage(message, sender, response) {
                     resp.res = message.seq
                     sender.postMessage(resp);
                 }
-            }, function() {
-                sender.postMessage({type: "fail", fail: message.seq});
+            }, function(arg) {
+                sender.postMessage(arg);
             })
         }
         
@@ -362,9 +365,7 @@ function wsOnOpen() {
 function wsOnClose(event) {
     console.log("[WS] Disconnected ", event);
     if(WS_FAILED > 4) {
-        postMessage(new StatePacket(false,
-            "Disconnected from main server",
-            `WebSocket connection lost, attempted ${WS_FAILED} retries`));
+        postMessage(new InternalPacket("error", "Disconnect from WS"));
     }
     clearInterval(INTERVAL_IDS.ws);
     INTERVAL_IDS.ws = 0;
@@ -429,11 +430,12 @@ function sendPacket(packet, callback, onfail) {
     console.debug(`[Queued] `, packet);
     WS_CALLBACK[packet.seq] = callback;
     if(onfail) {
+        console.log("Setting up timeout for ", packet);
         var c = setTimeout(function() {
             delete WS_NORESPONSE[packet.seq];
             console.log("Sending timeout for ", packet);
-            onfail();
-        }, WS_QUEUE.RetryAfter(packet) * 3);
+            onfail(new NoResponsePacket("Timed out"));
+        }, WS_QUEUE.RetryAfter(packet));
         WS_NORESPONSE[packet.seq] = {f: onfail, timer: c};
     }
     WS_QUEUE.Enqueue(packet);
@@ -444,7 +446,11 @@ function sendPacket(packet, callback, onfail) {
             INTERVAL_IDS.ws = setInterval(wsInterval, 5000);
         }
     } else {
+        console.warn("Saving queue as we're disconnected!");
         saveQueue();
+        if(onfail) {
+            onfail(new NoResponsePacket("instant"));
+        }
     }
 }
 
@@ -546,7 +552,7 @@ async function setToken(token) {
     postMessage({type: "sendInfo", data: INFO});
 }
 
-function getTimes(timesObject, callback) {
+function getTimes(timesObject, callback, error_callback) {
     query = [];
     var respJson = {};
     for(let key of timesObject) {
@@ -578,6 +584,11 @@ function getTimes(timesObject, callback) {
             CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), response[vId]));
         }
         callback(response);
+    }, function(err) {
+        console.log("Failed to get times: ", err);
+        if(error_callback) {
+            error_callback(err);
+        }
     });
 }
 

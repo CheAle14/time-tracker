@@ -3,26 +3,14 @@
  * Packets sent internally via chrome.runtime and ports.
  */ 
 class InternalPacket {
+    /**
+     * Gets an internal packet of the given type
+     * @param {INTERNAL} type 
+     * @param {*} data 
+     */
     constructor(type, data) {
         this.type = type;
         this.data = data;
-    }
-}
-
-/**
- * Packets sent to or from websocket connection
- */
-class WebSocketPacket {
-    /**
-     * Creates a packet to be sent over the websocket with provided information
-     * @param {EXTERNAL} id 
-     * @param {*} content 
-     * @param {number} sequence 
-     */
-    constructor(id, content, sequence) {
-        this.id = id;
-        this.content = content;
-        this.seq = sequence || 1;
     }
 }
 
@@ -51,6 +39,52 @@ class StatePacket extends InternalPacket {
     }
     get log() {
         return this.data.log;
+    }
+}
+
+/**
+ * Represents an error sent to failure callback when a packet to the websocket fails to get a response.  
+ */
+class NoResponsePacket extends InternalPacket {
+    constructor(reason) {
+        super(INTERNAL.NO_RESPONSE, {
+            reason: reason
+        });
+    }
+    /**
+     * Whether the packet was generated because the WS was disconnected when 
+     * we attempted to send our request.
+     * 
+     * @returns {boolean}
+     */
+    get wasInstant()  {
+        return this.data.reason === "instant";
+    }
+
+    /**
+     * Sets whether the packet was instantly failed.
+     * 
+     * @param {boolean} value True if the WS was disconnected when we attempted to send the packet
+     */
+    set wasInstant(value) {
+        this.data.reason = value ? "instant" : "unknown"; 
+    }
+}
+
+/**
+ * Packets sent to or from websocket connection
+ */
+ class WebSocketPacket {
+    /**
+     * Creates a packet to be sent over the websocket with provided information
+     * @param {EXTERNAL} id 
+     * @param {*} content 
+     * @param {number} sequence 
+     */
+    constructor(id, content, sequence) {
+        this.id = id;
+        this.content = content;
+        this.seq = sequence || 1;
     }
 }
 
@@ -174,6 +208,8 @@ class WebSocketQueue {
      */
     Perist() {
         var a = [];
+        var setAny = false;
+        var setTimes = {};
         for(let item of this._queue) {
             if([EXTERNAL.GET_LATEST,
                 EXTERNAL.GET_THREADS,
@@ -181,8 +217,18 @@ class WebSocketQueue {
                 EXTERNAL.GET_TIMES].includes(item.id)) {
                     continue;
             } else {
-                a.push(item);
+                if(item.id === EXTERNAL.SET_TIMES) {
+                    setAny = true;
+                    for(let key in item.data) {
+                        setTimes[key] = item.data[key];
+                    }
+                } else {
+                    a.push(item);
+                }
             }
+        }
+        if(setAny) {
+            a.push(new WebSocketPacket(EXTERNAL.SET_TIMES, setTimes));
         }
         return a;
     }
@@ -281,7 +327,8 @@ const INTERNAL = {
     GET_REDDIT_COUNT: "getRedditCount",
     SEND_REDDIT_COUNT: "sendRedditCount",
     REDDIT_VISITED: "redditVisited",
-    IGNORED_VIDEO: "ignoredVideo"
+    IGNORED_VIDEO: "ignoredVideo",
+    NO_RESPONSE: "noResponse"
 }
 
 /**
@@ -517,5 +564,30 @@ class VideoToolTip {
             console.log(`New tooltip: `, span);
         }
         return span;
+    }
+}
+
+class ConsistentToast {
+    constructor(config) {
+        this.config = config;
+        this.toast = null;
+    }
+    setText(text) {
+        if(this.toast) {
+            this.toast.toastElement.innerText = text;
+        } else {
+            this.config.text = text;
+            this.toast = Toastify(this.config);
+            this.toast.showToast();
+        }
+    }
+    hideToast() {
+        if(this.toast) {
+            this.toast.hideToast();
+            this.toast = null;
+        }
+    }
+    get showing() {
+        return !!this.toast;
     }
 }

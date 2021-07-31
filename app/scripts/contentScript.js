@@ -6,21 +6,51 @@ var HALTED = false;
 var IGNORED = false;
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
-var SEQUENCE = 0;
+var FAILS = {};
+var SEQUENCE = 1;
 
 const vidToolTip = new VideoToolTip();
 var flavRemoveLoaded = []; // flavours to remove once loaded
 var flavRemoveSave = []; // flavours to remove once saved
 
-var fetchingToast = null;
-var watchingToast = null;
+var fetchingToast = new ConsistentToast({
+    duration: -1,
+    close: true,
+    gravity: "top", // `top` or `bottom`
+    position: "right", // `left`, `center` or `right`
+    backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
+    stopOnFocus: true, // Prevents dismissing of toast on hover
+    onClick: function(){} // Callback after click
+});
+var watchingToast = new ConsistentToast({
+    duration: -1,
+    close: true,
+    gravity: "top", // `top` or `bottom`
+    position: "right", // `left`, `center` or `right`
+    backgroundColor: "linear-gradient(to right, red, blue)",
+    stopOnFocus: true, // Prevents dismissing of toast on hover
+    onClick: function(){} // Callback after click
+});
 var oldVideoState = null;
-var disconnectToast = null;
+var errorToast = new ConsistentToast({
+    duration: 2500,
+    close: true,
+    gravity: "top", // `top` or `bottom`
+    position: "right", // `left`, `center` or `right`
+    backgroundColor: "red",
+    onclick: window.location.reload,
+    stopOnFocus: true, // Prevents dismissing of toast on hover
+});
 
-function postMessage(packet, callback) {
+function postMessage(packet, callback, failure) {
     if(callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
+    }
+    if(failure) {
+        if(!packet.seq)
+            packet.seq = SEQUENCE++;
+        FAILS[packet.seq] = failure;
     }
     console.debug(`[PORT] >>`, packet);
     port.postMessage(packet);
@@ -42,7 +72,7 @@ function portOnMessage(message, sender, response) {
         setTimes();
     } else if (message.type === "error") {
         console.error(message.data);
-        HALTED = true;
+        errorToast.setText(message.data);
     } else if(message.type === "savedTime" && HALTED === false) {
         for(let id in message.data) {
             if(id === WATCHING) {
@@ -105,23 +135,29 @@ function portOnMessage(message, sender, response) {
         } catch (error) {
             console.error(error);
         }
-        if(fetchingToast) {
-            fetchingToast.hideToast();
-            fetchingToast = null;
-        }
-        if(watchingToast) {
-            watchingToast.hideToast();
-            watchingToast = null;
-        }
+        fetchingToast.hideToast();
+        watchingToast.hideToast();
         play();
     } else if(message.type === "alert") {
         alert(message.data);
     }
     if(message.res) {
         var cb = CALLBACKS[message.res]
-        delete CALLBACKS[message.res]
-        console.log(`[PORT] Invoking callback handler for ${message.res}`);
-        cb(message);
+        if(cb) {
+            delete CALLBACKS[message.res]
+            console.log(`[PORT] Invoking callback handler for ${message.res}`);
+            cb(message);
+        }
+
+        var fl = FAILS[message.res];
+        if(fl) {
+            delete FAILS[message.res];
+            console.log(`[PORT] Invoking error handler for ${message.res}`);
+            if(message.type === INTERNAL.NO_RESPONSE) {
+                message = new NoResponsePacket(message.data.reason);
+            }
+            fl(message);
+        }
     }
     if(CONNECTED === false) {
         // we were disconnected, but now we're back!
@@ -131,7 +167,7 @@ function portOnMessage(message, sender, response) {
         CONNECTED = true;
         HALTED = false;
         console.log("Reconnected!");
-        disconnectToast.hideToast();
+        errorToast.hideToast();
         if(PRIOR_STATE === true) {
             console.log("Was previously playing, so attempting to play..");
             play();
@@ -160,25 +196,16 @@ function portOnDisconnect() {
             pause();
             vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
         }
-        disconnectToast = Toastify({
-            text: "Disconnected from backend server; reloading...",
-            duration: -1,
-            close: true,
-            gravity: "top", // `top` or `bottom`
-            position: "right", // `left`, `center` or `right`
-            backgroundColor: "red",
-            stopOnFocus: true, // Prevents dismissing of toast on hover
-        });
-        disconnectToast.showToast();
+        errorToast.setText("Disconnected from backend extension");
 
     } else {
         reconnects = reconnects + 1;
-        disconnectToast.toastElement.innerText = `Reconnecting (${reconnects} attempts)`;
+        errorToast.setText(`Reconnecting to backend, ${reconnects} attempts`);
     }
-    setTimeout(function() {
+    /*setTimeout(function() {
         //connectToExtension();
         window.location.reload();
-    }, 1000);
+    }, 1000);*/
 }
 
 connectToExtension();
@@ -459,21 +486,15 @@ function setTimes() {
             } catch (error) {
                 console.error(error);
             }
-            if(fetchingToast) {
-                fetchingToast.hideToast();
-                fetchingToast = null;
-            }
-            if(watchingToast) {
-                watchingToast.hideToast();
-                watchingToast = null;
-            }
+            fetchingToast.hideToast();
+            watchingToast.hideToast();
         }
     }
 
     if(mustFetch.length > 0) {
         postMessage({type: "getTimes", data: mustFetch});
-        if(fetchingToast) {
-            fetchingToast.toastElement.innerText = `Fetching ${mustFetch.length} more thumbnails`;
+        if(fetchingToast.showing) {
+            fetchingToast.setText(`Fetching ${mustFetch.length} more thumbnails`);
         }
     }
 }
@@ -615,24 +636,11 @@ setInterval(function() {
     var tofetch = setThumbnails();
     if(tofetch.length > 0) {
         postMessage({type: "getTimes", data: tofetch});
-        if(fetchingToast) {
-            fetchingToast.toastElement.innerText = `Fetching ${tofetch.length} thumbnails..`;
-        } else if(!isWatchingFullScreen()) {
-            /*fetchingToast = Toastify({
-                text: `Fetching ${tofetch.length} thumbnails..`,
-                duration: -1,
-                close: true,
-                gravity: "top", // `top` or `bottom`
-                position: "right", // `left`, `center` or `right`
-                backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                stopOnFocus: true, // Prevents dismissing of toast on hover
-                onClick: function(){} // Callback after click
-            }).showToast();*/
-            // TODO: add settings page to toggle this behaviour and other things
+        if(!isWatchingFullScreen()) {
+            fetchingToast.setText(`Fetching ${tofetch.length} thumbnails..`);
         }
-    } else if(fetchingToast) {
+    } else if(fetchingToast.showing) {
         fetchingToast.hideToast();
-        fetchingToast = null;
     }
 }, 4000);
 
@@ -646,21 +654,13 @@ setInterval(function() {
             IGNORED = false;
             console.log(`Now watching ${w}`);
             vidToolTip.ClearFlavours();
-            postMessage({type: "setWatching", data: WATCHING});
-            if(watchingToast) {
-                watchingToast.toastElement.innerText = "Fetching video saved time..";
-            } else {
-                watchingToast = Toastify({
-                    text: `Fetching video saved time..`,
-                    duration: -1,
-                    close: true,
-                    gravity: "top", // `top` or `bottom`
-                    position: "right", // `left`, `center` or `right`
-                    backgroundColor: "linear-gradient(to right, red, blue)",
-                    stopOnFocus: true, // Prevents dismissing of toast on hover
-                    onClick: function(){} // Callback after click
-                }).showToast();
-            }
+            postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
+                console.error("Could not set watching ", err);
+                vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
+                CACHE[w] = 0;
+                setTimes();
+            });
+            watchingToast.setText("Fetching video saved time..");
             boot();
         } else {
             console.log(`Stopped watching video`);
