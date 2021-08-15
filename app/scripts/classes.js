@@ -203,13 +203,24 @@ class WebSocketQueue {
         this._queue.push(packet);
     }
 
+    Reset() {
+        this._waiting = 0;
+        this._last = 0;
+        this._saved = false;
+        this._retries = 0;
+    } 
+
     /**
      * Gets an array of packets to persist
      */
     Perist() {
         var a = [];
-        var setAny = false;
+        var changed = {
+            times: false,
+            threads: false
+        }
         var setTimes = {};
+        var visitThread = {};
         for(let item of this._queue) {
             if([EXTERNAL.GET_LATEST,
                 EXTERNAL.GET_THREADS,
@@ -218,17 +229,35 @@ class WebSocketQueue {
                     continue;
             } else {
                 if(item.id === EXTERNAL.SET_TIMES) {
-                    setAny = true;
-                    for(let key in item.data) {
-                        setTimes[key] = item.data[key];
+                    changed.times = true;
+                    for(let key in item.content) {
+                        setTimes[key] = item.content[key];
                     }
+                } else if(item.id === EXTERNAL.VISITED_THREAD) {
+                    changed.threads = true;
+                    visitThread[item.content.id] = item.content.count;
                 } else {
                     a.push(item);
                 }
             }
         }
-        if(setAny) {
+        if(changed.times) {
             a.push(new WebSocketPacket(EXTERNAL.SET_TIMES, setTimes));
+        }
+        if(changed.threads) {
+            for(let key in visitThread) {
+                a.push(new WebSocketPacket(EXTERNAL.VISITED_THREAD, {
+                    id: key,
+                    count: visitThread[key]
+                }));
+            }
+        }
+        console.warn(`Purging internal queue of ${this.Length() - a.length} transitive packets`);
+        this._queue = a;
+        if(this.Get(this._waiting)) {
+        } else {
+            console.log("Packet we were waiting on has been purged, resetting queue...");
+            this.Reset();
         }
         return a;
     }

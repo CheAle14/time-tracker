@@ -385,7 +385,7 @@ function wsOnMessage(event) {
     console.log("[WS] <<", packet);
     if(packet.res !== undefined) {
         WS_QUEUE.MarkDone(packet.res);
-        if(WS_QUEUE.Length === 0) {
+        if(WS_QUEUE.Length() === 0) {
             console.log("Ending WS queue interval");
             clearInterval(INTERVAL_IDS.ws);
             INTERVAL_IDS.ws = 0;
