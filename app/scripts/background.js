@@ -512,7 +512,7 @@ function startWs() {
     }
     WS_CALLBACK = {};
     console.log(`Starting WS connection to ${url}`);
-    WS = new WebSocket(`${url}?session=${INFO.token}&v=${API_VERSION}`);
+    WS = new WebSocket(`${url}?api-key=${INFO.token}&v=${API_VERSION}`);
     WS.onopen = wsOnOpen;
     WS.onclose = wsOnClose;
     WS.onmessage = wsOnMessage;
