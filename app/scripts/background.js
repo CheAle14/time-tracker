@@ -529,7 +529,7 @@ async function setToken(token) {
     try {
         var response = await fetch(`${URL}/user`, {
             headers: {
-                "X-SESSION": INFO.token
+                "X-API-KEY": INFO.token
             }
         });
     } catch (error) {
