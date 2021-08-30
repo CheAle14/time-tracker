@@ -221,6 +221,7 @@ class WebSocketQueue {
         }
         var setTimes = {};
         var visitThread = {};
+        var sequence = 1;
         for(let item of this._queue) {
             if([EXTERNAL.GET_LATEST,
                 EXTERNAL.GET_THREADS,
@@ -237,19 +238,21 @@ class WebSocketQueue {
                     changed.threads = true;
                     visitThread[item.content.id] = item.content.count;
                 } else {
+                    if(item.seq > sequence)
+                        sequence = item.seq + 1;
                     a.push(item);
                 }
             }
         }
         if(changed.times) {
-            a.push(new WebSocketPacket(EXTERNAL.SET_TIMES, setTimes));
+            a.push(new WebSocketPacket(EXTERNAL.SET_TIMES, setTimes, sequence++));
         }
         if(changed.threads) {
             for(let key in visitThread) {
                 a.push(new WebSocketPacket(EXTERNAL.VISITED_THREAD, {
                     id: key,
                     count: visitThread[key]
-                }));
+                }, sequence++));
             }
         }
         console.warn(`Purging internal queue of ${this.Length() - a.length} transitive packets`);

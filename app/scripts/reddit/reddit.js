@@ -372,6 +372,17 @@ function get_color(comment_age, highlighting_since) {
     return color_final.toHslString();
 }
 
+function isThreadBylink(anchor) {
+    // whether its the link under the thread
+    if(!anchor)
+        return false;
+    if(anchor.innerText.indexOf("comment") >= 0)
+        return true;
+    if(anchor.innerText.indexOf("message") >= 0)
+        return true;
+    return false;
+}
+
 function getThreadCommentLinks() {
     var done = {};
     var anchors = [];
@@ -383,7 +394,7 @@ function getThreadCommentLinks() {
         }
     }
     for(let a of document.getElementsByClassName("bylink may-blank")) {
-        if(a.innerText.indexOf("comment") !== -1 && getThingId(a)) {
+        if(isThreadBylink(a) && getThingId(a)) {
             var existing = a.getAttribute("hnc-discovered");
             if(existing == null || !existing.endsWith("" + id)) {
                 anchors.push(a);
@@ -495,14 +506,18 @@ setInterval(function() {
             btn.addEventListener("click", function(event) {
                 if(ID) {
                     var anchor = ourAnchor();
-                    var count = getCount(anchor) + 1;
-                    console.log(`We just sent a comment! Setting known comment count to ${count}`);
-                    anchor.innerText = `${count} messages`;
-                    postMessage(new InternalPacket(INTERNAL.REDDIT_VISITED, {
-                        id: ID,
-                        count: count
-                    }));
-                } else {
+                    if(anchor) {
+                        var count = getCount(anchor) + 1;
+                        console.log(`We just sent a comment! Setting known comment count to ${count}`);
+                        anchor.innerText = `${count} comments`;
+                        postMessage(new InternalPacket(INTERNAL.REDDIT_VISITED, {
+                            id: ID,
+                            count: count
+                        }));
+                    } else {
+                        console.warn("Sent a comment, but don't know where the anchor is");
+                    }
+            } else {
                     console.warn("Sent a comment, but don't know on which post")
                 }
             });
