@@ -102,7 +102,7 @@ class CacheItem {
         this._kind = kind;
         this.id = id;
         this.cachedAt = cachedAt;
-        this.ttl = 15; // seconds to live in cache.
+        this.ttl = 300; // seconds to live in cache.
     }
 
     get Kind() {

@@ -105,7 +105,6 @@ var WS_CALLBACK = {};
 var WS_NORESPONSE = {};
 var WS_FAILED = 0;
 var SEQUENCE = 1;
-const CACHE_TIMEOUT = 20000;
 console.log("Background started");
 
 function postMessage(message) {
@@ -200,11 +199,9 @@ function onMessage(message, sender, response) {
                 var cached = CACHE.Fetch(vId);
                 if(cached) {
                     var diff = Date.now() - cached.cachedAt;
-                    if(diff < CACHE_TIMEOUT) {
-                        console.debug(`get: Found ${vId} in cache, out of date by ${diff}ms`);
-                        instantResponse[vId] = cached.t;
-                        continue;
-                    }
+                    console.debug(`get: Found ${vId} in cache, out of date by ${diff}ms`);
+                    instantResponse[vId] = cached.t;
+                    continue;
                 }
                 YT_GET_QUEUE.push(vId);
             }
@@ -563,11 +560,9 @@ function getTimes(timesObject, callback, error_callback) {
             var time = cachedData.t;
             var cachedAt = cachedData.cachedAt;
             var diff = Date.now() - cachedAt;
-            if(diff < CACHE_TIMEOUT) {
-                console.debug(`GET: Found ${key} in cache, out of date by ${diff}ms`);
-                respJson[key] = time;
-                continue;
-            }
+            console.debug(`GET: Found ${key} in cache, out of date by ${diff}ms`);
+            respJson[key] = time;
+            continue;
         }
         query.push(key);
     }
