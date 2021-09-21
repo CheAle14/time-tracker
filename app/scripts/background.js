@@ -315,7 +315,7 @@ function onMessage(message, sender, response) {
             }, function(x) {
                 for(let threadId in x) {
                     var data = x[threadId];
-                    var cacheItem = new RedditCacheItem(threadId, Date.now(), data.count);
+                    var cacheItem = new RedditCacheItem(threadId, Date.now(), data.when, data.count);
                     CACHE.Insert(cacheItem);
                     cached[threadId] = cacheItem;
                 }

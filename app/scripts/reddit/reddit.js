@@ -150,8 +150,8 @@ function handleInfo(anchors, data) {
     }
     console.log(`Adding selection for `, threadData);
 
-    addTimeSelectionBox(threadData.cachedAt);
-    highlight(threadData.cachedAt[threadData.cachedAt.length - 1]);
+    addTimeSelectionBox(threadData.visits);
+    highlight(threadData.visits[threadData.visits.length - 1]);
 }
 
 /* original authored by TheBrain, at http://stackoverflow.com/a/12475270 */

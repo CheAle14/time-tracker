@@ -139,10 +139,15 @@ class YoutubeCacheItem extends CacheItem {
 }
 
 class RedditCacheItem extends CacheItem {
-    constructor(id, cachedAt, count) {
+    constructor(id, cachedAt, visitedAt, count) {
         super(CACHE_KIND.REDDIT, id, cachedAt);
         this.count = count;
         this.ttl = 60 * 60; // seconds to live in cache
+        this.visits = visitedAt;
+    }
+
+    get Visits() {
+        return this.visits;
     }
 }
 
