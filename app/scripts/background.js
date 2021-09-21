@@ -282,8 +282,9 @@ function onMessage(message, sender, response) {
         }
         var existing = CACHE.Fetch(message.data.id);
         if(!existing) {
-            existing = new RedditCacheItem(message.data.id, new Date(), [], 0);
+            existing = new RedditCacheItem(message.data.id, 0, [], 0);
         }
+        existing.cachedAt = new Date();
         existing.visits.push(Date.now());
         existing.count = message.data.count;
         CACHE.Insert(existing);

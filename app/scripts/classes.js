@@ -107,7 +107,7 @@ class CacheItem {
         } else if (type === Date.constructor.name) {
             this.cachedAt = cachedAt;
         } else {
-            throw new Exception("cachedAt must be number or Date, was " + typeof(cachedAt));
+            throw new Error("cachedAt must be number or Date, was " + typeof(cachedAt));
         }
         this.ttl = 300; // seconds to live in cache.
     }
