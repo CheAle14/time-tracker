@@ -280,7 +280,13 @@ function onMessage(message, sender, response) {
             console.warn("Received null thread ID, not handling.");
             return;
         }
-        CACHE.Insert(new RedditCacheItem(message.data.id, new Date(), message.data.count));
+        var existing = CACHE.Fetch(message.data.id);
+        if(!existing) {
+            existing = new RedditCacheItem(message.data.id, new Date(), [], 0);
+        }
+        existing.visits.push(Date.now());
+        existing.count = message.data.count;
+        CACHE.Insert(existing);
         sendPacket({
             id: EXTERNAL.VISITED_THREAD,
             content: message.data
