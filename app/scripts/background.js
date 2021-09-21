@@ -198,8 +198,6 @@ function onMessage(message, sender, response) {
             if(!(vId in YT_GET_QUEUE)) {
                 var cached = CACHE.Fetch(vId);
                 if(cached) {
-                    var diff = Date.now() - cached.cachedAt;
-                    console.debug(`get: Found ${vId} in cache, out of date by ${diff}ms`);
                     instantResponse[vId] = cached.t;
                     continue;
                 }
@@ -317,7 +315,7 @@ function onMessage(message, sender, response) {
             }, function(x) {
                 for(let threadId in x) {
                     var data = x[threadId];
-                    var cacheItem = new RedditCacheItem(threadId, data.when, data.count);
+                    var cacheItem = new RedditCacheItem(threadId, Date.now(), data.count);
                     CACHE.Insert(cacheItem);
                     cached[threadId] = cacheItem;
                 }

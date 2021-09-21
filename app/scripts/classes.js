@@ -101,8 +101,19 @@ class CacheItem {
     constructor(kind, id, cachedAt) {
         this._kind = kind;
         this.id = id;
-        this.cachedAt = cachedAt;
+        var type = typeof(cachedAt);
+        if(type === "number") {
+            this.cachedAt = new Date(cachedAt);
+        } else if (type === Date.constructor.name) {
+            this.cachedAt = cachedAt;
+        } else {
+            throw new Exception("cachedAt must be number or Date, was " + typeof(cachedAt));
+        }
         this.ttl = 300; // seconds to live in cache.
+    }
+
+    get Id() {
+        return this.id;
     }
 
     get Kind() {
@@ -116,7 +127,7 @@ class CacheItem {
      */
     get IsExpired() {
         var expiresAt = new Date(this.cachedAt.getTime() + (this.ttl * 1000));
-        return expiresAt > Date.now();
+        return Date.now() > expiresAt;
     }
 }
 
@@ -145,7 +156,9 @@ class TrackerCache {
      * @param {CacheItem} item 
      */
     Insert(item) {
-        this._cache[item.Id] = item;
+        item.cachedAt = new Date();
+        console.debug(`[CACHE] Inserted ${item.id} into cache at ${Date.now()}`);
+        this._cache[item.id] = item;
     }
     /**
      * Places the cache item into the cache
@@ -164,10 +177,14 @@ class TrackerCache {
         var x = this._cache[id];
         if(x) {
             if(x.IsExpired) {
-                console.debug(`Found in cache, but ttl expired. `, x);
+                console.debug(`[CACHE] Found ${id}, but ttl has expired`, x);
                 delete this._cache[id];
                 return null;
             }
+            var hasBeenInCache = Date.now() - x.cachedAt.getTime();
+            console.debug(`[CACHE] Found ${id} in cache, ttl remaining: ${x.ttl - (hasBeenInCache/1000)}s`, x);
+        } else {
+            console.debug(`[CACHE] Could not find ${id} in cache`);
         }
         return x;
     }
@@ -181,6 +198,7 @@ class TrackerCache {
     }
 
     Clear() {
+        console.debug("[CACHE] Cleared cache.");
         this._cache = {};
     }
 }
