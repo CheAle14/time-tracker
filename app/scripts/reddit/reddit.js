@@ -126,6 +126,9 @@ function handleInfo(anchors, data) {
         if(!obj) {
             continue;
         }
+        if(obj.count === -1) {
+            continue;
+        }
         var currentCount = getCount(anchor);
         if(currentCount > obj.count) {
             var newSpan = document.createElement("span");
@@ -146,6 +149,9 @@ function handleInfo(anchors, data) {
     }
     var threadData = data[ID];
     if(!threadData) {
+        return;
+    }
+    if(threadData.count === -1) {
         return;
     }
     console.log(`Adding selection for `, threadData);

@@ -34,6 +34,5 @@
         "scripts": [
             "scripts/classes.js", "scripts/background.js"
         ]
-    },
-    "update_url": "https://github.com/CheAle14/time-tracker/releases/latest/download/app.crx"
+    }
 }

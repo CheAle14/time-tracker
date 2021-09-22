@@ -318,7 +318,7 @@ function onMessage(message, sender, response) {
         } else {
             sendPacket({
                 id: EXTERNAL.GET_THREADS,
-                content: message.data
+                content: message.data // MAYBE: change this to use 'remain' array, to save re-requesting the things we have cached?
             }, function(x) {
                 for(let threadId in x) {
                     var data = x[threadId];
@@ -326,6 +326,21 @@ function onMessage(message, sender, response) {
                     CACHE.Insert(cacheItem);
                     cached[threadId] = cacheItem;
                 }
+
+                // Now we look through the ones we haven't visited
+                // To cache the fact that we haven't visited them.
+                for(let threadId of remain) {
+                    if(CACHE.Fetch(threadId)) {
+                        continue;
+                    }
+                    // This thread hasn't been visited before, so we'll cache
+                    // something to ensure it isn't requested again recently
+                    var cacheItem = new RedditCacheItem(threadId, Date.now(), [], -1);
+                    CACHE.Insert(cacheItem);
+                    cached[threadId] = cacheItem;
+                }
+
+
 
                 if(message.seq !== undefined) {
                     var resp = new InternalPacket("response", cached);
