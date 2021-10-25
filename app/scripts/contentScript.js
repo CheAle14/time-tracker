@@ -602,10 +602,19 @@ function boot() {
     WATCHING = getId();
     if(WATCHING) {
         console.log(`Loaded watching ${WATCHING}`);
-        pause();
-        if(IS_MOBILE === false)
-            addVideoListeners();
-        flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
+
+        var length = getVideoLength();
+        if(length !== null && length < 60) {
+            console.log("Video is of short duration, not handling.")
+            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
+            LOADED = true;
+            IGNORED = true;
+        } else {
+            pause();
+            if(IS_MOBILE === false)
+                addVideoListeners();
+            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
+        }
     }
 }
 
