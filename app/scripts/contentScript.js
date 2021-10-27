@@ -613,6 +613,13 @@ function boot() {
             pause();
             if(IS_MOBILE === false)
                 addVideoListeners();
+            postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
+                console.error("Could not set watching ", err);
+                vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
+                CACHE[w] = 0;
+                setTimes();
+            });
+            watchingToast.setText("Fetching video saved time..");
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
         }
     }
@@ -663,13 +670,6 @@ setInterval(function() {
             IGNORED = false;
             console.log(`Now watching ${w}`);
             vidToolTip.ClearFlavours();
-            postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
-                console.error("Could not set watching ", err);
-                vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
-                CACHE[w] = 0;
-                setTimes();
-            });
-            watchingToast.setText("Fetching video saved time..");
             boot();
         } else {
             console.log(`Stopped watching video`);

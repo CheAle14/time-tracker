@@ -376,6 +376,7 @@ const CACHE_KIND = {
 const INTERNAL = {
     SET_STATE: "setState",
     GET_LATEST: "getLatest",
+    GOT_TIMES: "gotTimes",
     SEND_LATEST: "sendLatest",
     NAVIGATE_ID: "navigateId",
     UPDATE: "update",

@@ -205,7 +205,7 @@ function onMessage(message, sender, response) {
             }
         }
         if(getObjectLength(instantResponse) > 0) {
-            postMessage({"type": "gotTimes", data: instantResponse});
+            sender.postMessage(new InternalPacket(INTERNAL.GOT_TIMES, instantResponse));
         }
     } else if(message.type === "setTime") {
         for(const vId in message.data) {
@@ -245,7 +245,7 @@ function onMessage(message, sender, response) {
             // fresh from server perspective, but what if they're watching it
             // in this client? then cache is the most up-to-date...
             getTimes([message.data], function(times) {
-                    postMessage({"type": "gotTimes", data: times});
+                sender.postMessage(new InternalPacket(INTERNAL.GOT_TIMES, instantResponse));
             }, function(error) {
                 error.res = message.seq;
                 sender.postMessage(error);
