@@ -312,8 +312,11 @@ function getVideo() {
 
 function getVideoLength() {
     var vid = getVideo();
-    if(vid)
-        return vid.duration;
+    if(vid) {
+        if(vid.duration > 0) {
+            return vid.duration;
+        }
+    }
     return null;
 }
 
@@ -601,9 +604,14 @@ function addVideoListeners() {
 function boot() {
     WATCHING = getId();
     if(WATCHING) {
-        console.log(`Loaded watching ${WATCHING}`);
-
         var length = getVideoLength();
+        console.log(`Loaded watching ${WATCHING} of duration `, length);
+
+        if(length === null || length === undefined) {
+            setTimeout(boot, 100);
+            return;
+        }
+
         if(length !== null && length < 60) {
             console.log("Video is of short duration, not handling.")
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
