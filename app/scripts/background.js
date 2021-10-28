@@ -245,7 +245,7 @@ function onMessage(message, sender, response) {
             // fresh from server perspective, but what if they're watching it
             // in this client? then cache is the most up-to-date...
             getTimes([message.data], function(times) {
-                sender.postMessage(new InternalPacket(INTERNAL.GOT_TIMES, instantResponse));
+                sender.postMessage(new InternalPacket(INTERNAL.GOT_TIMES, times));
             }, function(error) {
                 error.res = message.seq;
                 sender.postMessage(error);
