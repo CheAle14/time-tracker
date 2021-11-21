@@ -311,13 +311,13 @@ function getVideo() {
 }
 
 function isInPlaylist() {
-    var doc;
     if(IS_MOBILE) {
-        doc = document.getElementsByClassName("playlist-panel-header-title");
+        doc = document.getElementsByTagName("ytm-playlist")[0];
+        return !!doc;
     } else {
-        doc = document.getElementsByClassName("ytd-playlist-panel-renderer");
+        doc = document.getElementById("playlist");
+        return !doc.hidden;
     }
-    return !!doc;
 }
 
 function getVideoLength() {
