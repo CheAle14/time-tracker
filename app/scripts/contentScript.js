@@ -316,7 +316,7 @@ function isInPlaylist() {
         return !!doc;
     } else {
         doc = document.getElementById("playlist");
-        return !doc.hidden;
+        return doc.getAttribute("has-playlist-buttons") !== null;
     }
 }
 
