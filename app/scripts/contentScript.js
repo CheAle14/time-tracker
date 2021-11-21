@@ -310,6 +310,16 @@ function getVideo() {
     }
 }
 
+function isInPlaylist() {
+    var doc;
+    if(IS_MOBILE) {
+        doc = document.getElementsByClassName("playlist-panel-header-title");
+    } else {
+        doc = document.getElementsByClassName("ytd-playlist-panel-renderer");
+    }
+    return !!doc;
+}
+
 function getVideoLength() {
     var vid = getVideo();
     if(vid) {
@@ -614,10 +624,15 @@ function boot() {
 
         if(length !== null && length < 60) {
             console.log("Video is of short duration, not handling.")
-            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
+            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not handling", {color: "blue"}, 5000)));
             LOADED = true;
             IGNORED = true;
+        } else if (length < (60 * 5) && isInPlaylist()) {
+            console.log("Video is in a playlist, not fetching but still should set data.")
+            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
+            LOADED = true;
         } else {
+            console.log("Video nominal, pausing")
             pause();
             if(IS_MOBILE === false)
                 addVideoListeners();
