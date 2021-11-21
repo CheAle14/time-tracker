@@ -315,8 +315,15 @@ function isInPlaylist() {
         doc = document.getElementsByTagName("ytm-playlist")[0];
         return !!doc;
     } else {
-        doc = document.getElementById("playlist");
-        return doc.getAttribute("has-playlist-buttons") !== null;
+        players = document.getElementsByTagName("ytd-playlist-panel-renderer");
+        console.log(players);
+        for(let y of players) {
+            console.warn(y.classList, y);
+            if(y.classList.contains("ytd-watch-flexy")) {
+                return y.getAttribute("has-playlist-buttons") !== null;
+            }
+        }
+        return false;
     }
 }
 
