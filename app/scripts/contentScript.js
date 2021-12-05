@@ -646,7 +646,7 @@ function boot() {
             postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
                 console.error("Could not set watching ", err);
                 vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
-                CACHE[w] = 0;
+                CACHE[WATCHING] = 0;
                 setTimes();
             });
             watchingToast.setText("Fetching video saved time..");
