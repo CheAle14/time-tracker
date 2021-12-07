@@ -503,6 +503,7 @@ getInfos();
 
 // Listen for us commenting
 var registered = new WeakSet();
+const DOMAIN_REGEX = /(?<domain>.+)\.(?<tld>gd|com|org|net|gg)/
 
 setInterval(function() {
     var svBtns = document.getElementsByClassName("save");
@@ -552,7 +553,9 @@ setInterval(function() {
                         console.log("Full text: ", outerText);
                         var innerText = outerText.substr(1, outerText.length - 2);
                         console.log("Inner text: ", innerText);
-                        if(innerText.startsWith("dis.gd/")) {
+                        var mtch = innerText.match(DOMAIN_REGEX);
+                        console.log("Match: ", mtch);
+                        if(mtch) {
                             var uri = `](https://${innerText})`;
                             textarea.value += uri;
                             event.preventDefault();
