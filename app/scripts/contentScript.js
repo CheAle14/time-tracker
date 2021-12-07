@@ -353,8 +353,12 @@ function setThumbnails() {
         }
         var anchor = element.parentElement.parentElement.parentElement;
         var id = getId(anchor.href);
-        if(!id)
+        if(!id) {
             continue;
+        }
+        if(element.innerText.includes("LIVE")) {
+            continue;
+        }
         var state = element.getAttribute("mlapi-state") || "unfetched";
         if(state === "fetched") {
             var doneAt = parseInt(element.getAttribute("mlapi-done"));
