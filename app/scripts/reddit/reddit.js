@@ -4,6 +4,8 @@ var SEQUENCE = 1;
 var CALLBACKS = {};
 var ERRORS = {};
 
+var HIGHLIGHT_SINCE = null;
+
 /**
  * Sends a message to the port
  * @param {InternalPacket} packet The packet to send
@@ -157,7 +159,12 @@ function handleInfo(anchors, data) {
     console.log(`Adding selection for `, threadData);
 
     addTimeSelectionBox(threadData.visits);
-    highlight(threadData.visits[threadData.visits.length - 1]);
+    HIGHLIGHT_SINCE = threadData.visits[threadData.visits.length - 1]
+    setHighlighting();
+}
+
+function setHighlighting() {
+    update_highlighting({target: {value: HIGHLIGHT_SINCE}})
 }
 
 /* original authored by TheBrain, at http://stackoverflow.com/a/12475270 */
@@ -287,7 +294,7 @@ function update_highlighting(event) {
 }
 
 function reset_highlighting() {
-    console.log("Resetting highlighting");
+    //console.log("Resetting highlighting");
     let comments = document.getElementsByClassName('hnc_new');
     for (let i = comments.length; i > 0; i--) {
         let comment = comments[i - 1];
@@ -310,7 +317,8 @@ function highlight(since) {
 			username
 		;
 
-    console.log(`Highlighting since ${since}, ${time_ago(since)}`);
+    HIGHLIGHT_SINCE = since;
+    //console.log(`Highlighting since ${since}, ${time_ago(since)}`);
 
     if (document.body.classList.contains('loggedin')) {
         username = document.getElementsByClassName('user')[0].firstElementChild.textContent;
@@ -490,6 +498,7 @@ function getInfos() {
 }
 
 function sendVisited(elements) {
+    HIGHLIGHT_SINCE = null;
     if(ID) {
         var anchor = find(elements, (x) => getThingId(x) == ID);
         postMessage(new InternalPacket(INTERNAL.REDDIT_VISITED, {
@@ -564,6 +573,9 @@ setInterval(function() {
                 });
             }
         }
+    }
+    if(HIGHLIGHT_SINCE) {
+        setHighlighting();
     }
     getInfos();
 }, 500);
