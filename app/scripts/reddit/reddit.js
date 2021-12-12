@@ -348,7 +348,7 @@ function highlight(since) {
             let elements = {
                 'comment': comment,
                 'text': comment.getElementsByClassName('usertext-body')[0].firstElementChild,
-                'time': comment.getElementsByClassName('live-timestamp')[0] ?? comment.getElementsByClassName("edited-timestamp")[0],
+                'time': comment.getElementsByTagName("time")[0] ?? comment.getElementsByClassName('live-timestamp')[0] ?? comment.getElementsByClassName("edited-timestamp")[0],
             };
             console.log(elements);
             elements["time"].setAttribute('style', generate_comment_style(time, since));
@@ -514,7 +514,7 @@ getInfos();
 var registered = new WeakSet();
 const DOMAIN_REGEX = /(?<domain>.+)\.(?<tld>gd|com|org|net|gg)/
 
-setInterval(function() {
+const loopInterval = setInterval(function() {
     var svBtns = document.getElementsByClassName("save");
     for(let btn of svBtns) {
         if(!registered.has(btn)) {
