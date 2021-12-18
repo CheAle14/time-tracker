@@ -104,7 +104,7 @@ function portOnMessage(message, sender, response) {
             oldVideoState = !getVideo().paused;
             HALTED = true;
             try {
-                pause();
+                pause("setState play=false");
             } catch {}
             vidToolTip.Error = new VideoToolTipFlavour(message.data.display, {color: "red"}, -1);
         }
@@ -172,8 +172,7 @@ function portOnMessage(message, sender, response) {
             console.log("Was previously playing, so attempting to play..");
             play();
         } else if(PRIOR_STATE === false) {
-            console.log("Was previously paused, so making sure we're paused");
-            pause();
+            pause("Reconnected, previously paused, re-pausing");
         } else {
             console.log("There was no prior state??")
         }
@@ -193,7 +192,7 @@ function portOnDisconnect() {
             PRIOR_STATE = !vid.paused;
         }
         if(getVideo()) {
-            pause();
+            pause("Port disconnected");
             vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
         }
         errorToast.setText("Disconnected from backend extension");
@@ -316,14 +315,17 @@ function isInPlaylist() {
         return !!doc;
     } else {
         players = document.getElementsByTagName("ytd-playlist-panel-renderer");
-        console.log(players);
         for(let y of players) {
-            console.warn(y.classList, y);
             if(y.classList.contains("ytd-watch-flexy")) {
-                return y.getAttribute("has-playlist-buttons") !== null;
+                const css_o = window.getComputedStyle(y);
+                v = y.getAttribute("has-playlist-buttons")
+                console.log("isInPlaylist: ", css_o.visibility, css_o.display, v, y);
+                if(v === null)
+                    return null;
+                return css_o.display !== "none";
             }
         }
-        return false;
+        return null;
     }
 }
 
@@ -427,7 +429,7 @@ function setCurrentTimeCorrect() {
             cache = 0;
         }
     } else {
-        pause(); // make sure it is paused
+        pause("setCurrentTimeCorrect retry"); // make sure it is paused
         setTimeout(function() {
             setCurrentTimeCorrect();
         }, 500);
@@ -533,8 +535,8 @@ function getThumbnailFor(id) {
     return null;
 }
 
-function pause() {
-    console.log("Pausing video");
+function pause(reason) {
+    console.log("Pausing video: ", reason);
     getVideo().pause();
     if(IS_MOBILE) {
         addVideoListeners();
@@ -590,17 +592,17 @@ function addVideoListeners() {
         if(IGNORED)
             return;
         if(HALTED) {
-            pause();
+            pause("Played, but HALTED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }
         if(LOADED === false) {
-            pause();
+            pause("Played, but not LOADED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }
         if(CONNECTED === false) {
-            pause();
+            pause("Played, but not CONNECTED");
             console.error("Cannot play video: not syncing");
             return;
         }
@@ -626,9 +628,14 @@ function boot() {
     WATCHING = getId();
     if(WATCHING) {
         var length = getVideoLength();
-        console.log(`Loaded watching ${WATCHING} of duration `, length);
+        var playlist = isInPlaylist();
+        console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
 
         if(length === null || length === undefined) {
+            setTimeout(boot, 100);
+            return;
+        }
+        if(playlist === null || playlist === undefined){
             setTimeout(boot, 100);
             return;
         }
@@ -638,13 +645,13 @@ function boot() {
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not handling", {color: "blue"}, 5000)));
             LOADED = true;
             IGNORED = true;
-        } else if (length < (60 * 5) && isInPlaylist()) {
+        } else if (length < (60 * 5) && playlist) {
             console.log("Video is in a playlist, not fetching but still should set data.")
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
             LOADED = true;
         } else {
             console.log("Video nominal, pausing")
-            pause();
+            pause(`Boot, length ${typeof length} ${length}; playlist: ${playlist}`);
             if(IS_MOBILE === false)
                 addVideoListeners();
             postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
@@ -663,8 +670,8 @@ function saveTime() {
     if(IGNORED)
         return;
     if(HALTED) {
-        pause();
-        pause();
+        pause("Save time, but HALTED");
+        //pause();
         getVideo().currentTime = CACHE[WATCHING] || 0;
     }
     navigateToPort = {};
