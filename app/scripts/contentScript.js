@@ -314,18 +314,8 @@ function isInPlaylist() {
         doc = document.getElementsByTagName("ytm-playlist")[0];
         return !!doc;
     } else {
-        players = document.getElementsByTagName("ytd-playlist-panel-renderer");
-        for(let y of players) {
-            if(y.classList.contains("ytd-watch-flexy")) {
-                const css_o = window.getComputedStyle(y);
-                v = y.getAttribute("has-playlist-buttons")
-                console.log("isInPlaylist: ", css_o.visibility, css_o.display, v, y);
-                if(v === null)
-                    return null;
-                return css_o.display !== "none";
-            }
-        }
-        return null;
+        const urlSearchParams = new URLSearchParams(window.location.search);
+        return urlSearchParams.get("list") !== null;
     }
 }
 
