@@ -157,9 +157,16 @@ function handleInfo(anchors, data) {
         return;
     }
     console.log(`Adding selection for `, threadData);
+    const urlSearchParams = new URLSearchParams(window.location.search);
+    var snc = urlSearchParams.get("hnc_since");
+    if(snc) {
+        HIGHLIGHT_SINCE = parseInt(snc);
+        console.log("Setting highlight since from query:", HIGHLIGHT_SINCE)
+    } else {
+        HIGHLIGHT_SINCE = threadData.visits[threadData.visits.length - 1]
+    }
 
     addTimeSelectionBox(threadData.visits);
-    HIGHLIGHT_SINCE = threadData.visits[threadData.visits.length - 1]
     setHighlighting();
 }
 
@@ -258,8 +265,6 @@ function addTimeSelectionBox(times) {
     var sitetable = document.getElementById(`siteTable_t3_${ID}`);
     let commentarea = document.getElementsByClassName('commentarea')[0]
 
-    console.log(commentarea, sitetable);
-
     var selectionBox = document.createElement("span");
     selectionBox.classList.add("rounded", "blue-accent", "comment-visits-box");
 
@@ -272,13 +277,21 @@ function addTimeSelectionBox(times) {
     var selectElem = document.createElement("select");
     selectElem.id = "mlapi-visits";
 
+    setSelected = false;
     for(var time of times) {
         var opt = document.createElement("option");
         opt.value = time;
         opt.textContent = time_ago(time);
         selectElem.appendChild(opt);
+        if(time === HIGHLIGHT_SINCE) {
+            setSelected = true;
+            opt.setAttribute("selected", "")
+        }
+        
     }
-    selectElem.children[selectElem.children.length - 1].setAttribute("selected", "")
+    if(!setSelected) {
+        selectElem.children[selectElem.children.length - 1].setAttribute("selected", "")
+    }
 
     titleBox.appendChild(selectElem);
 
@@ -288,7 +301,7 @@ function addTimeSelectionBox(times) {
 }
 
 function update_highlighting(event) {
-    console.log(event);
+    console.log("HNC-UpdateHighlighting", event);
     reset_highlighting();
     highlight(parseInt(event.target.value));
 }
@@ -330,6 +343,22 @@ function highlight(since) {
             continue;
         }
 
+        /* Ensure links maintain since */
+        var permalink = comment.getElementsByClassName("bylink")[0];
+        if(permalink) {
+            var url = new URL(permalink.href);
+            url.searchParams.set("hnc_since", `${since}`);
+            permalink.href = url;
+        }
+
+        var deepthreadspan = comment.getElementsByClassName("deepthread")[0];
+        if(deepthreadspan) {
+            var deepthread = deepthreadspan.getElementsByTagName("a")[0];
+            var url = new URL(deepthread.href);
+            url.searchParams.set("hnc_since", `${since}`);
+            deepthread.href = url;
+        }
+
         /* skip our own comments */
         let author = comment.getElementsByClassName('author')[0].textContent;
         if (username && username == author) {
@@ -350,7 +379,7 @@ function highlight(since) {
                 'text': comment.getElementsByClassName('usertext-body')[0].firstElementChild,
                 'time': comment.getElementsByTagName("time")[0] ?? comment.getElementsByClassName('live-timestamp')[0] ?? comment.getElementsByClassName("edited-timestamp")[0],
             };
-            console.log(elements);
+            console.log("HNC-Update:", elements);
             elements["time"].setAttribute('style', generate_comment_style(time, since));
         }
     }
