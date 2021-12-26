@@ -337,6 +337,33 @@ function highlight(since) {
         username = document.getElementsByClassName('user')[0].firstElementChild.textContent;
     }
 
+    /* Ensure changing sort-by doesn't mess with highlighting */
+    var menuArea = document.getElementsByClassName("menuarea")[0];
+    var dropdown = menuArea.getElementsByClassName("drop-choices")[0];
+    var links = dropdown.getElementsByTagName("a");
+    for(let anchor of links) {
+        var url = new URL(anchor.href);
+        url.searchParams.set("hnc_since", `${since}`);
+        anchor.href = url;
+    }
+
+    /* Ensure the 'show 500' button does not mess with highlighting */
+    var showAnchor = document.getElementsByClassName("panestack-title")[0].getElementsByTagName("a")[0];
+    if(showAnchor) {
+        var aUrl = new URL(showAnchor.href);
+        aUrl.searchParams.set("hnc_since", `${since}`);
+
+        /* Ensure 'show 500' button maintains sort-by setting */
+        var pageParams = new URLSearchParams(window.location.href);
+        var sorted = pageParams.get("sort");
+        if(sorted) {
+            aUrl.searchParams.set("sort", sorted);
+        }
+
+        showAnchor.href = aUrl;
+    }
+
+
     for (let comment of comments) {
         /* skip removed or deleted comments */
         if (comment.classList.contains('deleted') || comment.classList.contains('spam')) {
