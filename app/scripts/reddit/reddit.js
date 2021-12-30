@@ -348,19 +348,22 @@ function highlight(since) {
     }
 
     /* Ensure the 'show 500' button does not mess with highlighting */
-    var showAnchor = document.getElementsByClassName("panestack-title")[0].getElementsByTagName("a")[0];
-    if(showAnchor) {
-        var aUrl = new URL(showAnchor.href);
-        aUrl.searchParams.set("hnc_since", `${since}`);
+    var panetitle = document.getElementsByClassName("panestack-title")[0];
+    if(panetitle) {
+        var showAnchor = panetitle.getElementsByTagName("a")[0];
+        if(showAnchor) {
+            var aUrl = new URL(showAnchor.href);
+            aUrl.searchParams.set("hnc_since", `${since}`);
 
-        /* Ensure 'show 500' button maintains sort-by setting */
-        var pageParams = new URLSearchParams(window.location.href);
-        var sorted = pageParams.get("sort");
-        if(sorted) {
-            aUrl.searchParams.set("sort", sorted);
+            /* Ensure 'show 500' button maintains sort-by setting */
+            var pageParams = new URLSearchParams(window.location.href);
+            var sorted = pageParams.get("sort");
+            if(sorted) {
+                aUrl.searchParams.set("sort", sorted);
+            }
+
+            showAnchor.href = aUrl;
         }
-
-        showAnchor.href = aUrl;
     }
 
 
