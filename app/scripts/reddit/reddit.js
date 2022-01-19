@@ -356,7 +356,7 @@ function highlight(since) {
             aUrl.searchParams.set("hnc_since", `${since}`);
 
             /* Ensure 'show 500' button maintains sort-by setting */
-            var pageParams = new URLSearchParams(window.location.href);
+            var pageParams = new URL(window.location.href).searchParams;
             var sorted = pageParams.get("sort");
             if(sorted) {
                 aUrl.searchParams.set("sort", sorted);
