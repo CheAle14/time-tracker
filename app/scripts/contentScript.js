@@ -351,6 +351,17 @@ function setThumbnails() {
         if(element.innerText.includes("LIVE")) {
             continue;
         }
+        var existingId = anchor.getAttribute("mlapi-id");
+        if(existingId && existingId !== id) {
+            console.log(`Element has different ID than initially thought: `, existingId, id, anchor);
+            for (var att, j = 0, atts = anchor.attributes, n = atts.length; j < n; j++){
+                att = atts[j];
+                if(att.nodeName.startsWith("mlapi-")) {
+                    console.log("Removing ", att.nodeName, "=", att.nodeValue);
+                    anchor.removeAttribute(att.nodeName);
+                }
+            }
+        }
         var state = element.getAttribute("mlapi-state") || "unfetched";
         if(state === "fetched") {
             var doneAt = parseInt(element.getAttribute("mlapi-done"));
@@ -387,6 +398,7 @@ function setThumbnails() {
             CACHE[id] = time;
             element.setAttribute("mlapi-state", "fetched")
             element.setAttribute("mlapi-done", Date.now());
+            element.setAttribute("mlapi-id", id);
         } else {
             if(state === "fetching") {
                 var prefix = element.innerText.startsWith("🔄") ? "🔃" : "🔄";
@@ -680,6 +692,9 @@ function videoSync() {
 }
 
 setInterval(function() {
+    if(isWatchingFullScreen()) {
+        return;
+    }
     var tofetch = setThumbnails();
     if(tofetch.length > 0) {
         postMessage({type: "getTimes", data: tofetch});
