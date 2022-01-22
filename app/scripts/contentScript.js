@@ -20,7 +20,7 @@ var fetchingToast = new ConsistentToast({
     position: "right", // `left`, `center` or `right`
     backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
     stopOnFocus: true, // Prevents dismissing of toast on hover
-    onClick: function(){} // Callback after click
+    onClick: function(){ fetchingToast.hideToast(); } // Callback after click
 });
 var watchingToast = new ConsistentToast({
     duration: -1,
@@ -29,7 +29,7 @@ var watchingToast = new ConsistentToast({
     position: "right", // `left`, `center` or `right`
     backgroundColor: "linear-gradient(to right, red, blue)",
     stopOnFocus: true, // Prevents dismissing of toast on hover
-    onClick: function(){} // Callback after click
+    onClick: function(){ watchingToast.hideToast(); } // Callback after click
 });
 var oldVideoState = null;
 var errorToast = new ConsistentToast({
@@ -430,6 +430,8 @@ function setThumbnails() {
                 element.style.backgroundColor = "blue";
             } else {
                 element.innerText = HELPERS.ToTime(vidLength);
+                element.style.color = null;
+                element.style.backgroundColor = null;
             }
             CACHE[id] = time;
             element.setAttribute("mlapi-state", "fetched")
@@ -731,12 +733,15 @@ function videoSync() {
     saveTime();
 }
 
+function clearToasts() {
+    fetchingToast.hideToast();
+    watchingToast.hideToast();
+}
+
 setInterval(function() {
     console.time("setInterval::complete");
     if(isWatchingFullScreen()) {
-        if(fetchingToast && fetchingToast.showing) {
-            fetchingToast.hideToast();
-        }
+        clearToasts();
         return;
     }
     console.time("setInterval::thumbnails");
