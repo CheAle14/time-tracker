@@ -734,6 +734,9 @@ function videoSync() {
 setInterval(function() {
     console.time("setInterval::complete");
     if(isWatchingFullScreen()) {
+        if(fetchingToast && fetchingToast.showing) {
+            fetchingToast.hideToast();
+        }
         return;
     }
     console.time("setInterval::thumbnails");
