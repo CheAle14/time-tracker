@@ -272,7 +272,12 @@ function getId(url) {
 }
 
 function pad(value, length) {
-    return (value.toString().length < length) ? pad("0"+value, length):value;
+    var s = value.toString();
+    var diff = length - s.length;
+    if(diff > 0) {
+        return "0".repeat(diff) + s;
+    }
+    return s;
 }
 function parseToSeconds(text) {
     var split = `${text}`.split(":");
@@ -329,28 +334,59 @@ function getVideoLength() {
     return null;
 }
 
+const hoursRegex = /(\d+) hours?/;
+const minsRegex = /(\d+) minutes?/;
+const secsRegex = /(\d+) seconds?/
+function parseLabel(ariaText) {
+    var times = ariaText.split(",");
+    var hours = ariaText.match(hoursRegex) || 0;
+    if(hours) {
+        hours = parseInt(hours[1]);
+    }
+    var mins = ariaText.match(minsRegex) || 0;
+    if(mins) {
+        mins = parseInt(mins[1]);
+    }
+    var seconds = ariaText.match(secsRegex) || 0;
+    if(seconds) {
+        seconds = parseInt(seconds[1]);
+    }
+    return (hours * 3600) + (mins * 60) + seconds;
+}
+
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
     var thumbNails = getThumbnails();
+    const nodeNeeded = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN"
     for(const i in thumbNails) {
         var element = thumbNails[i];
-        if(IS_MOBILE) {
-            if(element.nodeName !== "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER") {
-                continue;
-            }
-        } else {
-            if(element.nodeName !== "SPAN")
-                continue;
+        if(element.nodeName !== nodeNeeded) {
+            continue;
         }
+        var timer = `setThumbnails::${i}-${element.nodeName}`;
+        const elemVisible = !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length );
+        if(!elemVisible) {
+            continue;
+        }
+        //console.time(timer);
         var anchor = element.parentElement.parentElement.parentElement;
         var id = getId(anchor.href);
         if(!id) {
+            //console.timeEnd(timer);
             continue;
         }
-        if(element.innerText.includes("LIVE")) {
+        // TODO: use aria-label to get the duration, element.innerText can take 1ms to do - not very performant!
+        //console.time(timer + "::parse");
+        const vidLength = parseLabel(element.getAttribute("aria-label"));
+        //console.timeEnd(timer + "::parse");
+        /*console.time(timer + "::live");
+        if(element.innerText.includes("LIVE")) { 
+            console.timeEnd(timer);
+            console.timeEnd(timer + "::live");
             continue;
-        }
+        }*/
+        //console.timeEnd(timer + "::live");
         var existingId = anchor.getAttribute("mlapi-id");
         if(existingId && existingId !== id) {
             console.log(`Element has different ID than initially thought: `, existingId, id, anchor);
@@ -367,31 +403,31 @@ function setThumbnails() {
             var doneAt = parseInt(element.getAttribute("mlapi-done"));
             var diff = Date.now() - doneAt;
             if(diff < 30000) {
+                //console.timeEnd(timer);
                 continue;
             }
             delete CACHE[id];
             state = "redoing";
             element.setAttribute("mlapi-state", "redoing");
         }
-        var vidLength = element.getAttribute("mlapi-vid-length");
-        if(!vidLength) {
-            vidLength = parseToSeconds(element.innerText);
-            element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
-        }
+        //console.time(timer + "::rest");
+        //var vidLength = element.getAttribute("mlapi-vid-length");
+        //if(!vidLength) {
+        //    vidLength = parseToSeconds(element.innerText);
+        //    element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
+        //}dd
         if(id in CACHE) {
             var time = CACHE[id];
             var perc = time / vidLength;
             if(perc >= 0.9) {
                 element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
                 element.style.color = "green";
-                if(IS_MOBILE)
-                    element.style.backgroundColor = "white";
+                element.style.backgroundColor = "white";
             } else if(perc > 0) {
                 var remaining = vidLength - time;
                 element.innerText = HELPERS.ToTime(remaining);
                 element.style.color = "orange";
-                if(IS_MOBILE)
-                    element.style.backgroundColor = "blue";
+                element.style.backgroundColor = "blue";
             } else {
                 element.innerText = HELPERS.ToTime(vidLength);
             }
@@ -400,9 +436,11 @@ function setThumbnails() {
             element.setAttribute("mlapi-done", Date.now());
             element.setAttribute("mlapi-id", id);
         } else {
-            if(state === "fetching") {
-                var prefix = element.innerText.startsWith("🔄") ? "🔃" : "🔄";
+            if(state.startsWith("fetching")) {
+                var test = state.endsWith("1");
+                var prefix = test ? "🔃" : "🔄";
                 element.innerText = `${prefix} ${HELPERS.ToTime(vidLength)}`;
+                element.setAttribute("mlapi-state", test ? "fetching" : "fetching1");
             } else {
                 element.setAttribute("mlapi-state", "fetching");
                 element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
@@ -410,6 +448,8 @@ function setThumbnails() {
                 mustFetch.push(id);
             }
         }
+        //console.timeEnd(timer + "::rest");
+        //console.timeEnd(timer);
     }
     return mustFetch;
 }
@@ -692,18 +732,24 @@ function videoSync() {
 }
 
 setInterval(function() {
+    console.time("setInterval::complete");
     if(isWatchingFullScreen()) {
         return;
     }
+    console.time("setInterval::thumbnails");
     var tofetch = setThumbnails();
+    console.timeEnd("setInterval::thumbnails")
     if(tofetch.length > 0) {
+        console.time("setInterval::send");
         postMessage({type: "getTimes", data: tofetch});
         if(!isWatchingFullScreen()) {
             fetchingToast.setText(`Fetching ${tofetch.length} thumbnails..`);
         }
+        console.timeEnd("setInterval::send");
     } else if(fetchingToast.showing) {
         fetchingToast.hideToast();
     }
+    console.timeEnd("setInterval::complete");
 }, 4000);
 
 setInterval(function() {
