@@ -571,7 +571,7 @@ getInfos();
 
 // Listen for us commenting
 var registered = new WeakSet();
-const DOMAIN_REGEX = /(?<domain>.+)\.(?<tld>gd|com|org|net|gg)/
+const DOMAIN_REGEX = /(?<domain>.+)\.(?<tld>gd|com|org|net|gg|dev)/
 
 const loopInterval = setInterval(function() {
     var svBtns = document.getElementsByClassName("save");
@@ -604,9 +604,9 @@ const loopInterval = setInterval(function() {
                 registered.add(spanContainer);
                 console.log("Found edit span: ", spanContainer);
                 var textarea = spanContainer.getElementsByClassName("md")[0].childNodes[0];
-                textarea.addEventListener("keypress", function(event) {
-                    if(event.code === "BracketRight") {
-                        var lastIndex = textarea.value.length - 1;
+                textarea.addEventListener("input", function(event) {
+                    if(event.data === "]") {
+                        var lastIndex = textarea.selectionStart;
                         var leftBracket = -1;
                         for(var index = lastIndex; index >= 0; index--) {
                             var charAt = textarea.value[index];
