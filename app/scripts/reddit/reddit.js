@@ -301,7 +301,7 @@ function addTimeSelectionBox(times) {
 }
 
 function update_highlighting(event) {
-    console.log("HNC-UpdateHighlighting", event);
+    //console.log("HNC-UpdateHighlighting", event);
     reset_highlighting();
     highlight(parseInt(event.target.value));
 }
@@ -617,14 +617,14 @@ const loopInterval = setInterval(function() {
                         }
                         if(leftBracket === -1) 
                             return;
-                        var outerText = textarea.value.substring(leftBracket, lastIndex + 1) + "]";
+                        var outerText = textarea.value.substring(leftBracket, lastIndex + 1);
                         console.log("Full text: ", outerText);
-                        var innerText = outerText.substr(1, outerText.length - 2);
+                        var innerText = outerText.substring(1, outerText.length - 1);
                         console.log("Inner text: ", innerText);
                         var mtch = innerText.match(DOMAIN_REGEX);
                         console.log("Match: ", mtch);
                         if(mtch) {
-                            var uri = `](https://${innerText})`;
+                            var uri = `(https://${innerText})`;
                             textarea.value += uri;
                             event.preventDefault();
                         }
