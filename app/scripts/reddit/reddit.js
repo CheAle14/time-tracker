@@ -409,7 +409,7 @@ function highlight(since) {
                 'text': comment.getElementsByClassName('usertext-body')[0].firstElementChild,
                 'time': comment.getElementsByTagName("time")[0] ?? comment.getElementsByClassName('live-timestamp')[0] ?? comment.getElementsByClassName("edited-timestamp")[0],
             };
-            console.log("HNC-Update:", elements);
+            //console.log("HNC-Update:", elements);
             elements["time"].setAttribute('style', generate_comment_style(time, since));
         }
     }

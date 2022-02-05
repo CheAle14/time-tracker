@@ -647,3 +647,65 @@ class ConsistentToast {
         return !!this.toast;
     }
 }
+
+class StateInfo {
+    constructor() {
+        this.reset();
+    }
+
+    reset() {
+        this._fetch = false;
+        this._sync = false;
+        this._playlist = false;
+        this._halted = false;
+    }
+    
+    /**
+     * @returns {boolean} Whether we should fetch this video's start time
+     */
+    get FETCH() {
+        return this._fetch;
+    }
+    set FETCH(value) {
+        this._fetch = !!value;
+    }
+
+    /**
+     * @returns {boolean} Whether we should update the current saved time for this video
+     */
+    get SYNC() {
+        return this._sync;
+    }   
+    set SYNC(value) {
+        this._sync = value;
+    }
+
+    /**
+     * @returns {boolean} Whether the video is in a playlist
+     */
+    get PLAYLIST() {
+        return this._playlist;
+    }
+    set PLAYLIST(v) {
+        this._playlist = v;
+    }
+
+    /**
+     * @returns {boolean} Whether the video is forcefully stopped from playing
+     */
+    get HALTED() {
+        return this._halted;
+    }
+    set HALTED(v) {
+        this._halted = v;
+    }
+
+    /**
+     * Marks FETCH and SYNC as `false`
+     */
+    IGNORE() {
+        SYNC = false;
+        FETCH = false;
+    }
+
+}

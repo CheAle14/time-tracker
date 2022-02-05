@@ -1,9 +1,7 @@
 console.warn("Content script loaded!")
 var port = chrome.runtime.connect();
 var CONNECTED = true;
-var LOADED = false;
-var HALTED = false;
-var IGNORED = false;
+const STATUS = new StateInfo();
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var FAILS = {};
@@ -73,7 +71,7 @@ function portOnMessage(message, sender, response) {
     } else if (message.type === "error") {
         console.error(message.data);
         errorToast.setText(message.data);
-    } else if(message.type === "savedTime" && HALTED === false) {
+    } else if(message.type === "savedTime" && STATUS.HALTED == false) {
         for(let id in message.data) {
             if(id === WATCHING) {
                 console.log(`Saved up to ${message.data[id]}`);
@@ -90,9 +88,8 @@ function portOnMessage(message, sender, response) {
     } else if(message.type === "setState") {
         var state = new StatePacket(message.data.play, message.data.display, message.data.log);
         console.log(state.log);
-        LOADED = true;
         if(state.play) {
-            HALTED = false;
+            STATUS.HALTED = false;
             try {
                 if(oldVideoState)
                     play();
@@ -102,7 +99,7 @@ function portOnMessage(message, sender, response) {
             vidToolTip.AddFlavour(new VideoToolTipFlavour(state.display, {color: "blue"}, 10000));
         } else {
             oldVideoState = !getVideo().paused;
-            HALTED = true;
+            STATUS.HALTED = true;
             try {
                 pause("setState play=false");
             } catch {}
@@ -123,8 +120,7 @@ function portOnMessage(message, sender, response) {
         }).showToast();
     } else if(message.type === INTERNAL.IGNORED_VIDEO) {
         console.log("This video has been ignored, so we shall play");
-        IGNORED = true;
-        LOADED = true;
+        STATUS.IGNORE();
         try {
             vidToolTip.AddFlavour(new VideoToolTipFlavour(`Video blacklisted from sync`, {color: "orange"}, 20000));
             while(flavRemoveLoaded.length > 0) {
@@ -165,7 +161,7 @@ function portOnMessage(message, sender, response) {
         // being disconnected also means we can't call chrome.runtime.connect()
         // so i'm reloading the page instead.
         CONNECTED = true;
-        HALTED = false;
+        STATUS.HALTED = false;
         console.log("Reconnected!");
         errorToast.hideToast();
         if(PRIOR_STATE === true) {
@@ -184,7 +180,7 @@ function portOnDisconnect() {
     if(CONNECTED) {
         console.warn("Disconnected from backend extension");
         reconnects = 0;
-        HALTED = true;
+        STATUS.HALTED = true;
         CONNECTED = false;
         var vid = getVideo();
         PRIOR_STATE = true;
@@ -490,7 +486,6 @@ function setCurrentTimeCorrect() {
         }, 500);
     } else {
         console.log("Satisfactory...");
-        LOADED = true;
         if(getVideo().paused && PRIOR_STATE !== false)
             play();
         PRIOR_STATE = null;
@@ -528,7 +523,7 @@ function getQueryTime() {
 function setTimes() {
     var mustFetch = setThumbnails();
 
-    if(WATCHING !== null && LOADED === false) {
+    if(WATCHING !== null && STATUS.FETCH) {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
             var query = getQueryTime();
@@ -616,15 +611,11 @@ function play() {
 }
 
 function addVideoListeners() {
-    if(IGNORED)
-        return;
     var vid = getVideo();
     vid.onpause = function() {
-        if(LOADED === false)
-            return false;
-        if(HALTED)
+        if(STATUS.HALTED)
             return;
-        if(IGNORED)
+        if(STATUS.SYNC == false)
             return;
         console.log("Video play stopped.");
         if(CONNECTED)
@@ -633,18 +624,19 @@ function addVideoListeners() {
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
-        if(IGNORED)
-            return;
-        if(HALTED) {
+        if(STATUS.HALTED) {
             pause("Played, but HALTED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }
-        if(LOADED === false) {
+        if(STATUS.SYNC == false) {
+            return;
+        }
+        /*if(LOADED === false) {
             pause("Played, but not LOADED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
-        }
+        }*/
         if(CONNECTED === false) {
             pause("Played, but not CONNECTED");
             console.error("Cannot play video: not syncing");
@@ -657,9 +649,9 @@ function addVideoListeners() {
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
-        if(IGNORED)
+        if(STATUS.HALTED)
             return;
-        if(HALTED)
+        if(STATUS.SYNC == false)
             return;
         saveTime();
         clearInterval(videoSync);
@@ -675,11 +667,11 @@ function boot() {
         var playlist = isInPlaylist();
         console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
 
-        if(length === null || length === undefined) {
+        if(playlist === null || playlist === undefined){
             setTimeout(boot, 100);
             return;
         }
-        if(playlist === null || playlist === undefined){
+        if(length === null || length === undefined) {
             setTimeout(boot, 100);
             return;
         }
@@ -687,12 +679,11 @@ function boot() {
         if(length !== null && length < 60) {
             console.log("Video is of short duration, not handling.")
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not handling", {color: "blue"}, 5000)));
-            LOADED = true;
-            IGNORED = true;
+            STATUS.IGNORE();
         } else if (length < (60 * 5) && playlist) {
             console.log("Video is in a playlist, not fetching but still should set data.")
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
-            LOADED = true;
+            STATUS.SYNC = true;
         } else {
             console.log("Video nominal, pausing")
             pause(`Boot, length ${typeof length} ${length}; playlist: ${playlist}`);
@@ -706,17 +697,20 @@ function boot() {
             });
             watchingToast.setText("Fetching video saved time..");
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
+            STATUS.SYNC = true;
+            STATUS.FETCH = true;
         }
     }
 }
 
 function saveTime() {
-    if(IGNORED)
-        return;
-    if(HALTED) {
+    if(STATUS.HALTED) {
         pause("Save time, but HALTED");
         //pause();
         getVideo().currentTime = CACHE[WATCHING] || 0;
+    }
+    if(STATUS.SYNC == false) {
+        return;
     }
     navigateToPort = {};
     var time = getVideo().currentTime;
@@ -726,9 +720,7 @@ function saveTime() {
 }
 
 function videoSync() {
-    if(IGNORED)
-        return;
-    if(getVideo().paused || HALTED)
+    if(getVideo().paused || STATUS.HALTED)
         return;
     saveTime();
 }
@@ -766,8 +758,7 @@ setInterval(function() {
         delete CACHE[w];
         WATCHING = w;
         if(w) {
-            LOADED = false;
-            IGNORED = false;
+            STATUS.reset();
             console.log(`Now watching ${w}`);
             vidToolTip.ClearFlavours();
             boot();
@@ -778,7 +769,7 @@ setInterval(function() {
     if(IS_MOBILE && WATCHING) {
         if(getVideo().getAttribute("mlapi-events") != "true")
             addVideoListeners();
-        if(HALTED || !LOADED) {
+        if(STATUS.HALTED) {
             getVideo().pause();
             getVideo().currentTime = CACHE[WATCHING] || 0;
         }
