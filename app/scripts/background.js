@@ -179,6 +179,7 @@ chrome.runtime.onConnect.addListener(function(thing) {
         }
     });
     thing.postMessage({type: "sendInfo", data: INFO});
+    thing.postMessage({type: "blacklists", data: BLACKLISTED_VIDEOS});
     if(typeof UP_TO_DATE === "string") {
         thing.postMessage({type: "update", data: UP_TO_DATE});
     }

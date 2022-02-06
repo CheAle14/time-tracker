@@ -6,6 +6,7 @@ var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var FAILS = {};
 var SEQUENCE = 1;
+var BLACKLISTED_VIDEOS = {};
 
 const vidToolTip = new VideoToolTip();
 var flavRemoveLoaded = []; // flavours to remove once loaded
@@ -63,7 +64,9 @@ function connectToExtension() {
 
 function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
-    if(message.type === "gotTimes") {
+    if(message.type === "blacklists") {
+        BLACKLISTED_VIDEOS = message.data;
+    } else if(message.type === "gotTimes") {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
         }
@@ -678,6 +681,12 @@ function boot() {
         var length = getVideoLength();
         var playlist = isInPlaylist();
         console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
+
+        if(WATCHING in BLACKLISTED_VIDEOS) {
+            console.log("Video blacklisted, ignoring");
+            STATUS.IGNORE();
+            return;
+        }
 
         if(playlist === null || playlist === undefined){
             setTimeout(boot, 100);
