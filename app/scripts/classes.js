@@ -658,6 +658,7 @@ class StateInfo {
         this._sync = false;
         this._playlist = false;
         this._halted = false;
+        this._loaded = false;
     }
     
     /**
@@ -700,12 +701,20 @@ class StateInfo {
         this._halted = v;
     }
 
+    get LOADED() {
+        return this._loaded;
+    }
+    set LOADED(v) {
+        this._loaded = v;
+    }
+
     /**
      * Marks FETCH and SYNC as `false`
      */
     IGNORE() {
-        SYNC = false;
-        FETCH = false;
+        this._sync = false;
+        this._fetch = false;
+        this._loaded = true;
     }
 
 }

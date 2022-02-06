@@ -374,7 +374,18 @@ function setThumbnails() {
         }
         // TODO: use aria-label to get the duration, element.innerText can take 1ms to do - not very performant!
         //console.time(timer + "::parse");
-        const vidLength = parseLabel(element.getAttribute("aria-label"));
+        var vidLength = null;
+        try {
+            if(element.hasAttribute("aria-label")) {
+                vidLength = parseLabel(element.getAttribute("aria-label"));
+            } else {
+                vidLength = parseToSeconds(element.innerText);
+                element.setAttribute("aria-label", `${vidLength} seconds`);
+            }
+        } catch(err) {
+            console.error(element, err);
+            continue;
+        }
         //console.timeEnd(timer + "::parse");
         /*console.time(timer + "::live");
         if(element.innerText.includes("LIVE")) { 
@@ -523,7 +534,7 @@ function getQueryTime() {
 function setTimes() {
     var mustFetch = setThumbnails();
 
-    if(WATCHING !== null && STATUS.FETCH) {
+    if(WATCHING !== null && STATUS.FETCH && STATUS.LOADED == false) {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
             var query = getQueryTime();
@@ -537,6 +548,7 @@ function setTimes() {
                 CACHE[WATCHING] = query;
             }
             console.log(`Setting video currentTime to ${data}`);
+            STATUS.LOADED = true;
             try {
                 var time = HELPERS.ToTime(data);
                 var whereFrom = !!query ? "Param" : "Loaded"
@@ -613,11 +625,11 @@ function play() {
 function addVideoListeners() {
     var vid = getVideo();
     vid.onpause = function() {
+        console.log("Video play stopped; ", STATUS.HALTED, STATUS.SYNC, CONNECTED);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
             return;
-        console.log("Video play stopped.");
         if(CONNECTED)
             saveTime();
         clearInterval(videoSync);
