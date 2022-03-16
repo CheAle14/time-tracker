@@ -1,3 +1,10 @@
+String.prototype.insert = function(index, string) {
+    if (index > 0) {
+        return this.substring(0, index) + string + this.substr(index);
+    }
+
+    return string + this;
+};
 
 /**
  * Packets sent internally via chrome.runtime and ports.
@@ -457,6 +464,16 @@ const DISCORD_USER_SETTINGS = {
     "Activity Status": ["Display current activity as a status message"],
     "Gane Overlay": []
 }
+const DISCORD_SERVER_SETTINGS = {
+    "Overview": [],
+    "Roles": [],
+    "Emoji": [],
+    "Stickers": [],
+    "Moderation": [],
+    "Audit Log": [],
+    "Integrations": []
+}
+
 
 class VideoToolTipFlavour {
     constructor(text, style, duration) {

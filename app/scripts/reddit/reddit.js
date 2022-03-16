@@ -567,8 +567,30 @@ function sendVisited(elements) {
     }
 }
 
-function getDsSelects(data, path) {
-    var select = document.createElement("select");
+function getDsData(path) {
+    var split = path.split('.');
+    var data = {};
+    if(split[0] == "User Settings") {
+        data = DISCORD_USER_SETTINGS;
+    } else {
+        data = DISCORD_SERVER_SETTINGS;
+    }
+    for(var i = 1; i < split.length; i++) {
+        var key = split[i];
+        data = data[key];
+    }
+    return data;
+}
+
+function getTextArea() {
+    return spanContainer.getElementsByClassName("md")[0].childNodes[0];
+}
+
+function getDsSelects(data, path, callback) {
+    const id = "mlapi-ds-" + path.split('.').length;
+    var select = document.getElementById(id) ?? document.createElement("select");
+    select.id = id;
+    select.setAttribute("mlapi-index", path.split('.').length);
     select.setAttribute("mlapi-path", path);
     for(let key in data) {
         var value = data[key];
@@ -583,15 +605,12 @@ function getDsSelects(data, path) {
 
         select.appendChild(option);
     }
-    select.onchange = function(arg) {
-        console.log(arg);
-        console.log(select.options[select.selectedIndex]);
-    }
+    select.onchange = callback;
 
     return select;
 }
 
-function getDsSettingsForm(kind) {
+function getDsSettingsForm(kind, cb) {
     var data = {};
     if(kind === "User Settings") {
         data = DISCORD_USER_SETTINGS;
@@ -603,6 +622,7 @@ function getDsSettingsForm(kind) {
     div.classList.add("mlapi-popup");
 
     var span = document.createElement("span");
+    span.id = "mlapi-ds-container";
     span.classList.add("popuptext");
     span.classList.add("show");
     
@@ -610,15 +630,7 @@ function getDsSettingsForm(kind) {
     p.innerText = "Select setting below, then click insert";
     span.appendChild(p);
 
-    span.appendChild(getDsSelects(data, kind));
-
-    var btn = document.createElement("button");
-    btn.value = "Insert";
-
-    btn.onclick = function() {
-        console.log("Insert!");
-    };
-    span.appendChild(btn);
+    span.appendChild(getDsSelects(data, kind, cb));
 
     div.appendChild(span);
 
@@ -675,23 +687,54 @@ const loopInterval = setInterval(function() {
                         }
                         if(leftBracket === -1) 
                             return;
-                        var outerText = textarea.value.substring(leftBracket, lastIndex + 1);
-                        console.log("Full text: ", outerText);
+                        var outerText = textarea.value.substring(leftBracket, lastIndex);
+                        console.log(`Full text: '${outerText}'`);
                         var innerText = outerText.substring(1, outerText.length - 1);
                         console.log("Inner text: ", innerText);
                         var mtch = innerText.match(DOMAIN_REGEX);
                         console.log("Match: ", mtch);
                         if(mtch) {
                             var uri = `(https://${innerText})`;
-                            textarea.value += uri;
-                            event.preventDefault();
+                            textarea.value = textarea.value.insert(textarea.selectionStart, uri);
+                            //event.preventDefault();
                         }
                     } else if(event.data === ">") {
                         var lastIndex = textarea.selectionStart;
                         var subStr = textarea.value.substring(0, lastIndex);
-                        if(subStr.endsWith("User Settings >")) {
+                        if(subStr.endsWith("Settings >")) {
                             console.log("Inserting!");
-                            var div = getDsSettingsForm("User Settings");
+                            var cb = function(arg) {
+                                console.log(arg);
+                                var select = arg.target;
+                                var opt = select.options[select.selectedIndex];
+                                if(opt) {
+                                    var span = document.getElementById("mlapi-ds-container");
+                                    var d = getDsData(opt.id);
+                                    console.log(opt, d, typeof(d));
+                                    if(typeof(d) === "string" || (typeof(d) === "object" && d.length == 0)) {
+                                        // We've finished, either string or empty array.
+                                        var splitPath = opt.id.split('.');
+                                        splitPath.shift(); // remove User Settings at start
+                                        if(typeof(d) === "string") {
+                                            var last = splitPath.length - 1;
+                                            splitPath[last] = d; // convert index into actual text
+                                        }
+                                        var txt = " " + splitPath.join(" > ");
+                                        textarea.value = textarea.value.insert(textarea.selectionStart, txt);
+                                        var _div = document.getElementById("mlapi-ds-settings");
+                                        document.body.removeChild(_div);
+                                        textarea.focus();
+                        
+                                    } else {
+                                        var _s = getDsSelects(d, opt.id, cb)
+                                        span.appendChild(_s);
+                                        _s.focus();
+                                    }
+                                }
+                            }
+                            var kind = subStr.endsWith("User Settings >") ? "User Settings" : "Server Settings";
+                            var div = getDsSettingsForm(kind, cb);
+                            div.id = "mlapi-ds-settings";
                             document.body.appendChild(div);
                         }
                     }
