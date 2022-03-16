@@ -567,6 +567,64 @@ function sendVisited(elements) {
     }
 }
 
+function getDsSelects(data, path) {
+    var select = document.createElement("select");
+    select.setAttribute("mlapi-path", path);
+    for(let key in data) {
+        var value = data[key];
+
+        var option = document.createElement("option");
+        if(typeof(value) === "string") {
+            option.innerText = value;
+        } else {
+            option.innerText = key;
+        }
+        option.id = path + "." + key;
+
+        select.appendChild(option);
+    }
+    select.onchange = function(arg) {
+        console.log(arg);
+        console.log(select.options[select.selectedIndex]);
+    }
+
+    return select;
+}
+
+function getDsSettingsForm(kind) {
+    var data = {};
+    if(kind === "User Settings") {
+        data = DISCORD_USER_SETTINGS;
+    } else {
+        data = DISCORD_SERVER_SETTINGS;
+    }
+
+    var div = document.createElement("div");
+    div.classList.add("mlapi-popup");
+
+    var span = document.createElement("span");
+    span.classList.add("popuptext");
+    span.classList.add("show");
+    
+    var p = document.createElement("p");
+    p.innerText = "Select setting below, then click insert";
+    span.appendChild(p);
+
+    span.appendChild(getDsSelects(data, kind));
+
+    var btn = document.createElement("button");
+    btn.value = "Insert";
+
+    btn.onclick = function() {
+        console.log("Insert!");
+    };
+    span.appendChild(btn);
+
+    div.appendChild(span);
+
+    return div;
+}
+
 getInfos();
 
 // Listen for us commenting
@@ -627,6 +685,14 @@ const loopInterval = setInterval(function() {
                             var uri = `(https://${innerText})`;
                             textarea.value += uri;
                             event.preventDefault();
+                        }
+                    } else if(event.data === ">") {
+                        var lastIndex = textarea.selectionStart;
+                        var subStr = textarea.value.substring(0, lastIndex);
+                        if(subStr.endsWith("User Settings >")) {
+                            console.log("Inserting!");
+                            var div = getDsSettingsForm("User Settings");
+                            document.body.appendChild(div);
                         }
                     }
                 });

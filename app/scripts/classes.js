@@ -420,6 +420,44 @@ const HELPERS = {
     }
 }
 
+const DISCORD_USER_SETTINGS = {
+    "My Account": [],
+    "User Profile": [],
+    "Privacy & Safety": [
+        "Allow direct messages from server members",
+        "Allow access to age-restricted servers on iOS",
+        "Allow friends to join your game",
+        "Allow voice channel participants to join your game",
+        "Use data to improve Discord",
+        "Use data to customise my Discord experience",
+        "Allow Discord to track screen reader usage",
+    ],
+    "Authorised Apps": [],
+    "Connections": [],
+    "Appearance": [],
+    "Accessibility": [],
+    "Voice & Video": [],
+    "Text & Images": [
+        "When posted as links to chat",
+        "When uploaded directly to Discord",
+        "With image descriptions",
+        "Show embeds and preview website links pasted into chat",
+        "Show emoji reactions on messages",
+        "Automatically convert emoticons in your messages to emojis",
+        "Sticker Suggestions",
+        "Use slash commands and preview emojis, mentions and markdown syntax as you type",
+        "Open threads in split view"
+    ],
+    "Notifications": [],
+    "Keybinds": [],
+    "Language": [],
+    "Windows Settings": [],
+    "Streamer Mode": [],
+    "Advanced": ["Developer Mode"],
+    "Activity Status": ["Display current activity as a status message"],
+    "Gane Overlay": []
+}
+
 class VideoToolTipFlavour {
     constructor(text, style, duration) {
         this.text = text;
