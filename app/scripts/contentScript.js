@@ -319,7 +319,12 @@ function isInPlaylist() {
         return !!doc;
     } else {
         const urlSearchParams = new URLSearchParams(window.location.search);
-        return urlSearchParams.get("list") !== null;
+        if(urlSearchParams.get("list") === null) return false;
+        var playlistTitle = document.getElementsByClassName("title style-scope ytd-playlist-panel-renderer complex-string")[0];
+        if(playlistTitle === null || playlistTitle === undefined) return null;
+        const title = playlistTitle.getAttribute("title");
+        if(title === null || title === undefined || title === "") return null;
+        return title;
     }
 }
 
@@ -628,7 +633,7 @@ function play() {
 function addVideoListeners() {
     var vid = getVideo();
     vid.onpause = function() {
-        console.log("Video play stopped; ", STATUS.HALTED, STATUS.SYNC, CONNECTED);
+        console.log("Video play stopped; ", CONNECTED, STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
@@ -639,12 +644,17 @@ function addVideoListeners() {
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
+        console.log("Video play started; ", CONNECTED, STATUS);
         if(STATUS.HALTED) {
             pause("Played, but HALTED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }
         if(STATUS.SYNC == false) {
+            return;
+        }
+        if(STATUS.LOADED == false) {
+            pause("Played, but not LOADED");
             return;
         }
         /*if(LOADED === false) {
@@ -657,13 +667,13 @@ function addVideoListeners() {
             console.error("Cannot play video: not syncing");
             return;
         }
-        console.log("Video play started.");
         setInterval(videoSync, 1000);
         vidToolTip.Paused = false;
         vidToolTip.Ended = false;
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
+        console.log("Video play ended; ", CONNECTED, STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
@@ -696,6 +706,9 @@ function boot() {
             setTimeout(boot, 100);
             return;
         }
+        if(!IS_MOBILE && typeof(playlist) === "string") {
+            playlist = playlist.indexOf("Songs") >= 0;
+        }
 
         if(length !== null && length < 60) {
             console.log("Video is of short duration, not handling.")
@@ -705,6 +718,7 @@ function boot() {
             console.log("Video is in a playlist, not fetching but still should set data.")
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Not fetching", {color: "blue"}, 5000)));
             STATUS.SYNC = true;
+            STATUS.LOADED = true;
         } else {
             console.log("Video nominal, pausing")
             pause(`Boot, length ${typeof length} ${length}; playlist: ${playlist}`);
@@ -733,6 +747,10 @@ function saveTime() {
     if(STATUS.SYNC == false) {
         return;
     }
+    if(STATUS.LOADED == false) {
+        console.log("Not saving time: not loaded");
+        return;
+    }
     navigateToPort = {};
     var time = getVideo().currentTime;
     navigateToPort[WATCHING] = time;
@@ -742,6 +760,8 @@ function saveTime() {
 
 function videoSync() {
     if(getVideo().paused || STATUS.HALTED)
+        return;
+    if(STATUS.LOADED == false)
         return;
     saveTime();
 }
