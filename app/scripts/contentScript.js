@@ -259,11 +259,16 @@ function getVideoTxt() {
 
 function getId(url) {
     url = url || window.location.href;
-    if(url.indexOf("?v=") === -1)
+    var startIndex = url.indexOf("?v=");
+    if(startIndex === -1)
         return null;
-    var id = url.substring(url.indexOf("?v=") + 3);
+    var id = url.substring(startIndex + 3);
 
     var index = id.indexOf("&");
+    if(index !== -1) {
+        id = id.substring(0, index);
+    }
+    index = id.indexOf("#");
     if(index !== -1) {
         id = id.substring(0, index);
     }
