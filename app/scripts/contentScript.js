@@ -1,4 +1,3 @@
-console.warn("Content script loaded!")
 var port = chrome.runtime.connect();
 var CONNECTED = true;
 const STATUS = new StateInfo();
@@ -7,6 +6,8 @@ var CALLBACKS = {};
 var FAILS = {};
 var SEQUENCE = 1;
 var BLACKLISTED_VIDEOS = {};
+
+const ROOT = new DebugTimer(/*log*/ false);
 
 const vidToolTip = new VideoToolTip();
 var flavRemoveLoaded = []; // flavours to remove once loaded
@@ -363,30 +364,38 @@ function parseLabel(ariaText) {
     return (hours * 3600) + (mins * 60) + seconds;
 }
 
+var thumbnailBatch = 0;
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
     var thumbNails = getThumbnails();
-    const nodeNeeded = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN"
-    for(const i in thumbNails) {
+    const nodeNeeded = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN";
+    var done = 0;
+    var timeSpent = 0;
+    
+    for(let i = 0; i < thumbNails.length; i++) {
+        if(i <= thumbnailBatch)  {
+            continue;
+        }
+        thumbnailBatch = i;
         var element = thumbNails[i];
         if(element.nodeName !== nodeNeeded) {
             continue;
         }
-        var timer = `setThumbnails::${i}-${element.nodeName}`;
         const elemVisible = !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length );
         if(!elemVisible) {
             continue;
         }
-        //console.time(timer);
+        done += 1;
+        ROOT.push(`setInterval::${i}`);
         var anchor = element.parentElement.parentElement.parentElement;
         var id = getId(anchor.href);
         if(!id) {
-            //console.timeEnd(timer);
+            ROOT.timeEnd();
             continue;
         }
         // TODO: use aria-label to get the duration, element.innerText can take 1ms to do - not very performant!
-        //console.time(timer + "::parse");
+        ROOT.time("parse");
         var vidLength = null;
         try {
             if(element.hasAttribute("aria-label")) {
@@ -397,9 +406,10 @@ function setThumbnails() {
             }
         } catch(err) {
             console.error(element, err);
+            ROOT.timeEnd("parse");
             continue;
         }
-        //console.timeEnd(timer + "::parse");
+        ROOT.timeEnd("parse");
         /*console.time(timer + "::live");
         if(element.innerText.includes("LIVE")) { 
             console.timeEnd(timer);
@@ -407,6 +417,7 @@ function setThumbnails() {
             continue;
         }*/
         //console.timeEnd(timer + "::live");
+        ROOT.time("existing");
         var existingId = anchor.getAttribute("mlapi-id");
         if(existingId && existingId !== id) {
             console.log(`Element has different ID than initially thought: `, existingId, id, anchor);
@@ -418,9 +429,11 @@ function setThumbnails() {
                 }
             }
         }
+        ROOT.timeEnd("existing");
         var state = element.getAttribute("mlapi-state") || "unfetched";
         if(state === "fetched") {
-            var doneAt = parseInt(element.getAttribute("mlapi-done"));
+            continue;
+            /*var doneAt = parseInt(element.getAttribute("mlapi-done"));
             var diff = Date.now() - doneAt;
             if(diff < 30000) {
                 //console.timeEnd(timer);
@@ -428,7 +441,7 @@ function setThumbnails() {
             }
             delete CACHE[id];
             state = "redoing";
-            element.setAttribute("mlapi-state", "redoing");
+            element.setAttribute("mlapi-state", "redoing");*/
         }
         //console.time(timer + "::rest");
         //var vidLength = element.getAttribute("mlapi-vid-length");
@@ -436,42 +449,60 @@ function setThumbnails() {
         //    vidLength = parseToSeconds(element.innerText);
         //    element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
         //}dd
+        ROOT.push("set");
         if(id in CACHE) {
             var time = CACHE[id];
             var perc = time / vidLength;
             if(perc >= 0.9) {
+                ROOT.time("in-0.9");
                 element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
                 element.style.color = "green";
                 element.style.backgroundColor = "white";
+                ROOT.timeEnd("in-0.9");
             } else if(perc > 0) {
+                ROOT.time("in-0");
                 var remaining = vidLength - time;
                 element.innerText = HELPERS.ToTime(remaining);
                 element.style.color = "orange";
                 element.style.backgroundColor = "blue";
+                ROOT.timeEnd("in-0");
             } else {
+                ROOT.time("in-else");
                 element.innerText = HELPERS.ToTime(vidLength);
                 element.style.color = null;
                 element.style.backgroundColor = null;
+                ROOT.timeEnd("in-else");
             }
+            ROOT.time("in-attrs");
             CACHE[id] = time;
             element.setAttribute("mlapi-state", "fetched")
             element.setAttribute("mlapi-done", Date.now());
             element.setAttribute("mlapi-id", id);
+            ROOT.timeEnd("in-attrs");
         } else {
             if(state.startsWith("fetching")) {
+                ROOT.time("not-exist");
                 var test = state.endsWith("1");
                 var prefix = test ? "🔃" : "🔄";
                 element.innerText = `${prefix} ${HELPERS.ToTime(vidLength)}`;
+                //element.style.border = test ? "1px solid orange" : "1px solid red";
                 element.setAttribute("mlapi-state", test ? "fetching" : "fetching1");
+                ROOT.timeEnd("not-exist");
             } else {
+                ROOT.time("not-fetch");
                 element.setAttribute("mlapi-state", "fetching");
+                element.style.border = "1px red";
                 element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
                 delete CACHE[id];
                 mustFetch.push(id);
+                ROOT.timeEnd("not-fetch");
             }
         }
-        //console.timeEnd(timer + "::rest");
-        //console.timeEnd(timer);
+        ROOT.pop();
+        var itemTime = ROOT.pop();
+        timeSpent += itemTime;
+        console.log("Time for ", i, " was ", itemTime, " ms, total: ", timeSpent);
+        if(timeSpent > 10) continue;
     }
     return mustFetch;
 }
@@ -545,6 +576,7 @@ function getQueryTime() {
 }
 
 function setTimes() {
+    thumbnailBatch = 0;
     var mustFetch = setThumbnails();
 
     if(WATCHING !== null && STATUS.FETCH && STATUS.LOADED == false) {
@@ -672,7 +704,7 @@ function addVideoListeners() {
             console.error("Cannot play video: not syncing");
             return;
         }
-        setInterval(videoSync, 1000);
+        setInterval(videoSync, 5000);
         vidToolTip.Paused = false;
         vidToolTip.Ended = false;
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
@@ -692,6 +724,7 @@ function addVideoListeners() {
 
 function boot() {
     WATCHING = getId();
+    thumbnailBatch = 0;
     if(WATCHING) {
         var length = getVideoLength();
         var playlist = isInPlaylist();

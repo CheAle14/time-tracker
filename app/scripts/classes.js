@@ -718,3 +718,43 @@ class StateInfo {
     }
 
 }
+
+class DebugTimer {
+    constructor(log) {
+        this.prefixes = []
+        this.log = log;
+
+        this.timers = {};
+    }
+    push(pfx) {
+        this.prefixes.push(pfx);
+        this.time();
+    }
+    pop() {
+        var x = this.timeEnd();
+        this.prefixes.pop();
+        return x;
+    }
+    prefix() {
+        return this.prefixes.join("::");
+    }
+    time(pfx) {
+        var v = this.prefix();
+        if(pfx) v += "::" + pfx;
+        this.timers[v] = window.performance.now();
+        if(this.log)
+            console.time(v);
+    }
+    timeEnd(pfx) {
+        var v = this.prefix();
+        if(pfx) v += "::" + pfx;
+        var diff = -1;
+        if(v in this.timers) {
+            diff = window.performance.now() - this.timers[v];
+            delete this.timers[v];
+        }
+        if(this.log)
+            console.timeEnd(v);
+        return diff;
+    }
+}
