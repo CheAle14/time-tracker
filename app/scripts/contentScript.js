@@ -370,9 +370,11 @@ function setThumbnails() {
     var mustFetch = []
     var thumbNails = getThumbnails();
     const nodeNeeded = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN";
-    var done = 0;
-    var timeSpent = 0;
-    
+    const timeStart = window.performance.now();
+
+    if(thumbnailBatch == (thumbNails.length - 1))
+        thumbnailBatch = 0;
+    const startBatch = thumbnailBatch;
     for(let i = 0; i < thumbNails.length; i++) {
         if(i <= thumbnailBatch)  {
             continue;
@@ -499,11 +501,12 @@ function setThumbnails() {
             }
         }
         ROOT.pop();
-        var itemTime = ROOT.pop();
-        timeSpent += itemTime;
-        console.log("Time for ", i, " was ", itemTime, " ms, total: ", timeSpent);
-        if(timeSpent > 10) continue;
+        ROOT.pop();
+        var accTimeSpent = window.performance.now() - timeStart;
+        console.log(`After ${i} total time now ${accTimeSpent}ms`);
+        if(accTimeSpent > 20) break;
     }
+    console.log(`setThumbnails batched from ${startBatch} to ${thumbnailBatch}, of ${thumbNails.length}`);
     return mustFetch;
 }
 
@@ -573,6 +576,15 @@ function getQueryTime() {
 
     console.log(hours, minutes, seconds);
     return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function setQueryTime(seconds) {
+    //const searchParams = new URLSearchParams(window.location.search);
+    //searchParams.set("t", queryV);
+    var url = new URL(window.location.href);
+    url.searchParams.set("t", `${Math.floor(seconds)}s`);
+    //url.search = searchParams.toString();
+    history.replaceState(null, '', url);
 }
 
 function setTimes() {
@@ -794,6 +806,7 @@ function saveTime() {
     navigateToPort[WATCHING] = time;
     CACHE[WATCHING] = time;
     postMessage({type: "setTime", data: navigateToPort});
+    setQueryTime(time);
 }
 
 function videoSync() {
@@ -831,8 +844,15 @@ setInterval(function() {
     console.timeEnd("setInterval::complete");
 }, 4000);
 
+var lastUrl = null;
 setInterval(function() {
-    var w = getId();
+    var currentUrl = window.location;
+    if(currentUrl.pathname !== lastUrl) {
+        thumbnailBatch = 0;
+        lastUrl = currentUrl.pathname;
+        console.log("New URL; clearing thumbnail batch");
+    }
+    var w = getId(currentUrl.href);
     if(WATCHING !== w) {
         delete CACHE[w];
         WATCHING = w;
