@@ -720,10 +720,13 @@ class StateInfo {
 }
 
 class DebugTimer {
+    /**
+     * 
+     * @param {Boolean} log 
+     */
     constructor(log) {
         this.prefixes = []
         this.log = log;
-
         this.timers = {};
     }
     push(pfx) {

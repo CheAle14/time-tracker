@@ -42,6 +42,112 @@ var errorToast = new ConsistentToast({
     stopOnFocus: true, // Prevents dismissing of toast on hover
 });
 
+const injectedScript ="(" +
+  function() {
+    console.log("Script Injected");
+
+
+    const extractFromGridRenderer = (gridRenderer) => {
+        console.log("Looking at ", gridRenderer);
+        var ids = [];
+        if(gridRenderer.videoId) {
+            ids.push(gridRenderer.videoId);
+        }
+        const items = gridRenderer.items;
+        if(items) {
+            for(let item of items) {
+                if(item.gridVideoRenderer) {
+                ids.push(item.gridVideoRenderer.videoId);
+                }
+            }
+        }
+        return ids;
+    };
+
+    const extractIds = (js) => {
+        var ids = [];
+
+        const actions = js.onResponseReceivedActions;
+        if(!actions) return null;
+
+        const appendAction = actions[0];
+        if(!appendAction) return null;
+
+        const continuationActions = appendAction.appendContinuationItemsAction;
+        if(!continuationActions) return null;
+
+        const continuationItems = continuationActions.continuationItems;
+        console.log(continuationItems);
+        for(let continueItem of continuationItems) {
+            console.log("Section item: ", continueItem);
+
+            if(continueItem.gridVideoRenderer) {
+                var gridIds = extractFromGridRenderer(continueItem.gridVideoRenderer);
+                console.log("For section grid, found: ", gridIds);
+                ids = ids.concat(gridIds);
+            }
+
+            const sectionRenderer = continueItem.itemSectionRenderer;
+            if(sectionRenderer) {
+                const sectionContents = sectionRenderer.contents;
+                for(let content of sectionContents) {
+                    if(content.shelfRenderer) {
+                        const gridRenderer = content.shelfRenderer.content.gridRenderer;
+                        ids = ids.concat(extractFromGridRenderer(gridRenderer));
+                    }
+                }
+            }
+        }
+
+        return ids;
+    };
+
+    // define monkey patch function
+    const monkeyPatch = () => {
+        // intercept requests to try and catch when a new batch of videos is requested
+        const {fetch: origFetch} = window;
+        window.fetch = async (...args) => {
+            const orig = await (await origFetch(...args));
+            const response = orig.clone();
+            if(response.url.indexOf("youtubei/v1/browse") >= 0) {
+                console.log("This is a browse request!");
+                response
+                  .json()
+                  .then(js => {
+                    console.log("Browse data: ", js);
+                    var ids = extractIds(js);
+                    const event = new CustomEvent("data", {detail: ids});
+                    console.log("Ids fetched: ", ids);
+                    if(ids) document.getElementById("injectHolder").dispatchEvent(event);
+
+                  })
+                  .catch(err => {
+                      console.error("Browse error: ", err);
+                  })
+            }
+            
+            /* the original response can be resolved unmodified: */
+            return orig;
+        };
+    };
+    monkeyPatch();
+  } + ")();";
+
+const injectHolder = document.createElement("div");
+injectHolder.setAttribute("id", "injectHolder");
+document.body.appendChild(injectHolder);
+console.log("Injecting Script now");
+var script = document.createElement("script");
+script.textContent = injectedScript;
+(document.head || document.documentElement).appendChild(script);
+script.remove();
+
+injectHolder.addEventListener("data", function(e) {
+    console.log("Got data: ", e.detail);
+    postMessage({type: "getTimes", data: e.detail});
+})
+
+
 function postMessage(packet, callback, failure) {
     if(callback) {
         packet.seq = SEQUENCE++;
@@ -365,6 +471,7 @@ function parseLabel(ariaText) {
 }
 
 var thumbnailBatch = 0;
+var thumbnailInterval = null;
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
@@ -376,19 +483,18 @@ function setThumbnails() {
         thumbnailBatch = 0;
     const startBatch = thumbnailBatch;
     for(let i = 0; i < thumbNails.length; i++) {
-        if(i <= thumbnailBatch)  {
-            continue;
-        }
+        //if(i <= thumbnailBatch)  {
+        //    continue;
+        //}
         thumbnailBatch = i;
         var element = thumbNails[i];
         if(element.nodeName !== nodeNeeded) {
             continue;
         }
-        const elemVisible = !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length );
+        /*const elemVisible = !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length );
         if(!elemVisible) {
             continue;
-        }
-        done += 1;
+        }*/
         ROOT.push(`setInterval::${i}`);
         var anchor = element.parentElement.parentElement.parentElement;
         var id = getId(anchor.href);
@@ -503,10 +609,14 @@ function setThumbnails() {
         ROOT.pop();
         ROOT.pop();
         var accTimeSpent = window.performance.now() - timeStart;
-        console.log(`After ${i} total time now ${accTimeSpent}ms`);
-        if(accTimeSpent > 20) break;
+        console.debug(`setThumbnails - After ${i} total time now ${accTimeSpent}ms`);
     }
-    console.log(`setThumbnails batched from ${startBatch} to ${thumbnailBatch}, of ${thumbNails.length}`);
+    console.log(`setThumbnails batched from ${startBatch} to ${thumbnailBatch}, of ${thumbNails.length - 1}; taking ${window.performance.now() - timeStart}`);
+    if(thumbnailBatch === (thumbNails.length - 1)) {
+        console.log("Finished batching, clearing interval");
+        clearInterval(thumbnailInterval);
+        thumbnailInterval = null;
+    }
     return mustFetch;
 }
 
@@ -815,6 +925,10 @@ function videoSync() {
     if(STATUS.LOADED == false)
         return;
     saveTime();
+    if(isWatchingFullScreen()) {
+        clearToasts();
+        return;
+    }
 }
 
 function clearToasts() {
@@ -822,27 +936,24 @@ function clearToasts() {
     watchingToast.hideToast();
 }
 
-setInterval(function() {
-    console.time("setInterval::complete");
-    if(isWatchingFullScreen()) {
-        clearToasts();
-        return;
-    }
-    console.time("setInterval::thumbnails");
+function checkThumbnails() {
+    const ROOT = new DebugTimer();
+    ROOT.push("checkThumbnails");
+    ROOT.time("thumbnails");
     var tofetch = setThumbnails();
-    console.timeEnd("setInterval::thumbnails")
+    ROOT.timeEnd("thumbnails")
     if(tofetch.length > 0) {
-        console.time("setInterval::send");
+        ROOT.time("send");
         postMessage({type: "getTimes", data: tofetch});
         if(!isWatchingFullScreen()) {
             fetchingToast.setText(`Fetching ${tofetch.length} thumbnails..`);
         }
-        console.timeEnd("setInterval::send");
+        ROOT.timeEnd("send");
     } else if(fetchingToast.showing) {
         fetchingToast.hideToast();
     }
-    console.timeEnd("setInterval::complete");
-}, 4000);
+    ROOT.pop();
+}
 
 var lastUrl = null;
 setInterval(function() {
@@ -851,6 +962,11 @@ setInterval(function() {
         thumbnailBatch = 0;
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
+        if(thumbnailInterval) {
+            console.log("checkThumbnails: Interval is still ongoing");
+        } else {
+            thumbnailInterval = setInterval(checkThumbnails, 4000);
+        }
     }
     var w = getId(currentUrl.href);
     if(WATCHING !== w) {
