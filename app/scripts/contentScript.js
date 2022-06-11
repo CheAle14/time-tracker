@@ -6,6 +6,7 @@ var CALLBACKS = {};
 var FAILS = {};
 var SEQUENCE = 1;
 var BLACKLISTED_VIDEOS = {};
+var THUMBNAIL_ELEMENTS = {};
 
 const ROOT = new DebugTimer(/*log*/ false);
 
@@ -133,19 +134,29 @@ const injectedScript ="(" +
     monkeyPatch();
   } + ")();";
 
-const injectHolder = document.createElement("div");
-injectHolder.setAttribute("id", "injectHolder");
-document.body.appendChild(injectHolder);
-console.log("Injecting Script now");
-var script = document.createElement("script");
-script.textContent = injectedScript;
-(document.head || document.documentElement).appendChild(script);
-script.remove();
 
-injectHolder.addEventListener("data", function(e) {
-    console.log("Got data: ", e.detail);
-    postMessage({type: "getTimes", data: e.detail});
-})
+function injectScript() {
+    console.log("Injecting Script now");
+    var script = document.createElement("script");
+    script.textContent = injectedScript;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+
+    if(document.getElementById("injectHolder")) return;
+    const injectHolder = document.createElement("div");
+    injectHolder.setAttribute("id", "injectHolder");
+    document.body.appendChild(injectHolder);
+
+    injectHolder.addEventListener("data", function(e) {
+        console.log("Got data: ", e.detail);
+        postMessage({type: "getTimes", data: e.detail});
+        setTimeout(function() {
+            var mf = setThumbnails();
+            console.log("Inject must fetch: ", mf);
+        }, 4000);
+    })
+}
+
 
 
 function postMessage(packet, callback, failure) {
@@ -177,7 +188,7 @@ function portOnMessage(message, sender, response) {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
         }
-        setTimes();
+        setTimes(message.data);
     } else if (message.type === "error") {
         console.error(message.data);
         errorToast.setText(message.data);
@@ -408,11 +419,17 @@ function parseToSeconds(text) {
     return (hours * 60 * 60) + (mins * 60) + secs;
 }
 
-function getThumbnails() {
+const THUMBNAIL_NODE = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN";
+function* getThumbnails() {
+    var elements = null;
     if(IS_MOBILE) {
-        return document.getElementsByTagName("ytm-thumbnail-overlay-time-status-renderer");
+        elements = document.getElementsByTagName("ytm-thumbnail-overlay-time-status-renderer");
     } else {
-        return document.getElementsByClassName("style-scope ytd-thumbnail-overlay-time-status-renderer");
+        elements = document.getElementsByClassName("style-scope ytd-thumbnail-overlay-time-status-renderer");
+    }
+    for(let e of elements) {
+        if(e.tagName === THUMBNAIL_NODE)
+            yield e;
     }
 }
 
@@ -470,150 +487,167 @@ function parseLabel(ariaText) {
     return (hours * 3600) + (mins * 60) + seconds;
 }
 
+function setElementThumbnail(ROOT, element, data) {
+    if(element.getAttribute("aria-hidden")) {
+        console.log("Element is hidden: ", element);
+        ROOT.timeEnd();
+        return "hidden";
+    }
+    var anchor = element.parentElement.parentElement.parentElement;
+    var id = getId(anchor.href);
+    data.id = id;
+    if(!id) {
+        console.log("Could not get ID:", element);
+        ROOT.timeEnd();
+        return "no id";
+    }
+    // TODO: use aria-label to get the duration, element.innerText can take 1ms to do - not very performant!
+    ROOT.time("parse");
+    var vidLength = null;
+    try {
+        if(element.hasAttribute("aria-label")) {
+            vidLength = parseLabel(element.getAttribute("aria-label"));
+        } else {
+            vidLength = parseToSeconds(element.innerText);
+            element.setAttribute("aria-label", `${vidLength} seconds`);
+        }
+    } catch(err) {
+        console.error(element, err);
+        ROOT.timeEnd("parse");
+        return "parse error";
+    }
+    ROOT.timeEnd("parse");
+    /*console.time(timer + "::live");
+    if(element.innerText.includes("LIVE")) { 
+        console.timeEnd(timer);
+        console.timeEnd(timer + "::live");
+        continue;
+    }*/
+    //console.timeEnd(timer + "::live");
+    ROOT.time("existing");
+    var existingId = anchor.getAttribute("mlapi-id");
+    if(existingId && existingId !== id) {
+        console.log(`Element has different ID than initially thought: `, existingId, id, anchor);
+        for (var att, j = 0, atts = anchor.attributes, n = atts.length; j < n; j++){
+            att = atts[j];
+            if(att.nodeName.startsWith("mlapi-")) {
+                console.log("Removing ", att.nodeName, "=", att.nodeValue);
+                anchor.removeAttribute(att.nodeName);
+            }
+        }
+    }
+    ROOT.timeEnd("existing");
+    var state = element.getAttribute("mlapi-state") || "unfetched";
+    if(state === "fetched") {
+        return "fetched";
+        /*var doneAt = parseInt(element.getAttribute("mlapi-done"));
+        var diff = Date.now() - doneAt;
+        if(diff < 30000) {
+            //console.timeEnd(timer);
+            continue;
+        }
+        delete CACHE[id];
+        state = "redoing";
+        element.setAttribute("mlapi-state", "redoing");*/
+    }
+    //console.time(timer + "::rest");
+    //var vidLength = element.getAttribute("mlapi-vid-length");
+    //if(!vidLength) {
+    //    vidLength = parseToSeconds(element.innerText);
+    //    element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
+    //}dd
+    ROOT.push("set");
+    rtn = "undefined";
+    if(id in CACHE) {
+        var time = CACHE[id];
+        var perc = time / vidLength;
+        if(perc >= 0.9) {
+            ROOT.time("in-0.9");
+            element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
+            element.style.color = "green";
+            element.style.backgroundColor = "white";
+            ROOT.timeEnd("in-0.9");
+        } else if(perc > 0) {
+            ROOT.time("in-0");
+            var remaining = vidLength - time;
+            element.innerText = HELPERS.ToTime(remaining);
+            element.style.color = "orange";
+            element.style.backgroundColor = "blue";
+            ROOT.timeEnd("in-0");
+        } else {
+            ROOT.time("in-else");
+            element.innerText = HELPERS.ToTime(vidLength);
+            element.style.color = null;
+            element.style.backgroundColor = null;
+            ROOT.timeEnd("in-else");
+        }
+        ROOT.time("in-attrs");
+        CACHE[id] = time;
+        element.setAttribute("mlapi-state", "fetched")
+        element.setAttribute("mlapi-done", Date.now());
+        element.setAttribute("mlapi-id", id);
+        ROOT.timeEnd("in-attrs");
+        rtn = "updated";
+    } else {
+        if(state.startsWith("fetching")) {
+            ROOT.time("not-exist");
+            var test = state.endsWith("1");
+            var prefix = test ? "🔃" : "🔄";
+            element.innerText = `${prefix} ${HELPERS.ToTime(vidLength)}`;
+            //element.style.border = test ? "1px solid orange" : "1px solid red";
+            element.setAttribute("mlapi-state", test ? "fetching" : "fetching1");
+            ROOT.timeEnd("not-exist");
+            rtn = "fetching";
+        } else {
+            ROOT.time("not-fetch");
+            element.setAttribute("mlapi-state", "fetching");
+            element.style.border = "1px red";
+            element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
+            delete CACHE[id];
+            THUMBNAIL_ELEMENTS[id] = element;
+            rtn = "fetch";
+            ROOT.timeEnd("not-fetch");
+        }
+    }
+    ROOT.pop();
+    return rtn;
+}
+
 var thumbnailBatch = 0;
 var thumbnailInterval = null;
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
     var thumbNails = getThumbnails();
-    const nodeNeeded = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN";
     const timeStart = window.performance.now();
-
-    if(thumbnailBatch == (thumbNails.length - 1))
-        thumbnailBatch = 0;
-    const startBatch = thumbnailBatch;
-    for(let i = 0; i < thumbNails.length; i++) {
+    var done = 0;
+    var thoseWaiting = 0;
+    for(let element of thumbNails) {
         //if(i <= thumbnailBatch)  {
         //    continue;
         //}
-        thumbnailBatch = i;
-        var element = thumbNails[i];
-        if(element.nodeName !== nodeNeeded) {
-            continue;
-        }
         /*const elemVisible = !!(element.offsetWidth || element.offsetHeight || element.getClientRects().length );
         if(!elemVisible) {
             continue;
         }*/
-        ROOT.push(`setInterval::${i}`);
-        var anchor = element.parentElement.parentElement.parentElement;
-        var id = getId(anchor.href);
-        if(!id) {
-            ROOT.timeEnd();
-            continue;
+        done += 1;
+        ROOT.push(`setInterval::${done}`);
+
+        var data = {};
+        var rtn = setElementThumbnail(ROOT, element, data);
+        if(rtn === "fetch") {
+            mustFetch.push(data.id);
+        } else if(rtn === "fetching") {
+            thoseWaiting += 1;
         }
-        // TODO: use aria-label to get the duration, element.innerText can take 1ms to do - not very performant!
-        ROOT.time("parse");
-        var vidLength = null;
-        try {
-            if(element.hasAttribute("aria-label")) {
-                vidLength = parseLabel(element.getAttribute("aria-label"));
-            } else {
-                vidLength = parseToSeconds(element.innerText);
-                element.setAttribute("aria-label", `${vidLength} seconds`);
-            }
-        } catch(err) {
-            console.error(element, err);
-            ROOT.timeEnd("parse");
-            continue;
-        }
-        ROOT.timeEnd("parse");
-        /*console.time(timer + "::live");
-        if(element.innerText.includes("LIVE")) { 
-            console.timeEnd(timer);
-            console.timeEnd(timer + "::live");
-            continue;
-        }*/
-        //console.timeEnd(timer + "::live");
-        ROOT.time("existing");
-        var existingId = anchor.getAttribute("mlapi-id");
-        if(existingId && existingId !== id) {
-            console.log(`Element has different ID than initially thought: `, existingId, id, anchor);
-            for (var att, j = 0, atts = anchor.attributes, n = atts.length; j < n; j++){
-                att = atts[j];
-                if(att.nodeName.startsWith("mlapi-")) {
-                    console.log("Removing ", att.nodeName, "=", att.nodeValue);
-                    anchor.removeAttribute(att.nodeName);
-                }
-            }
-        }
-        ROOT.timeEnd("existing");
-        var state = element.getAttribute("mlapi-state") || "unfetched";
-        if(state === "fetched") {
-            continue;
-            /*var doneAt = parseInt(element.getAttribute("mlapi-done"));
-            var diff = Date.now() - doneAt;
-            if(diff < 30000) {
-                //console.timeEnd(timer);
-                continue;
-            }
-            delete CACHE[id];
-            state = "redoing";
-            element.setAttribute("mlapi-state", "redoing");*/
-        }
-        //console.time(timer + "::rest");
-        //var vidLength = element.getAttribute("mlapi-vid-length");
-        //if(!vidLength) {
-        //    vidLength = parseToSeconds(element.innerText);
-        //    element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
-        //}dd
-        ROOT.push("set");
-        if(id in CACHE) {
-            var time = CACHE[id];
-            var perc = time / vidLength;
-            if(perc >= 0.9) {
-                ROOT.time("in-0.9");
-                element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
-                element.style.color = "green";
-                element.style.backgroundColor = "white";
-                ROOT.timeEnd("in-0.9");
-            } else if(perc > 0) {
-                ROOT.time("in-0");
-                var remaining = vidLength - time;
-                element.innerText = HELPERS.ToTime(remaining);
-                element.style.color = "orange";
-                element.style.backgroundColor = "blue";
-                ROOT.timeEnd("in-0");
-            } else {
-                ROOT.time("in-else");
-                element.innerText = HELPERS.ToTime(vidLength);
-                element.style.color = null;
-                element.style.backgroundColor = null;
-                ROOT.timeEnd("in-else");
-            }
-            ROOT.time("in-attrs");
-            CACHE[id] = time;
-            element.setAttribute("mlapi-state", "fetched")
-            element.setAttribute("mlapi-done", Date.now());
-            element.setAttribute("mlapi-id", id);
-            ROOT.timeEnd("in-attrs");
-        } else {
-            if(state.startsWith("fetching")) {
-                ROOT.time("not-exist");
-                var test = state.endsWith("1");
-                var prefix = test ? "🔃" : "🔄";
-                element.innerText = `${prefix} ${HELPERS.ToTime(vidLength)}`;
-                //element.style.border = test ? "1px solid orange" : "1px solid red";
-                element.setAttribute("mlapi-state", test ? "fetching" : "fetching1");
-                ROOT.timeEnd("not-exist");
-            } else {
-                ROOT.time("not-fetch");
-                element.setAttribute("mlapi-state", "fetching");
-                element.style.border = "1px red";
-                element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
-                delete CACHE[id];
-                mustFetch.push(id);
-                ROOT.timeEnd("not-fetch");
-            }
-        }
-        ROOT.pop();
+        
         ROOT.pop();
         var accTimeSpent = window.performance.now() - timeStart;
-        console.debug(`setThumbnails - After ${i} total time now ${accTimeSpent}ms`);
+        console.debug(`setThumbnails - After ${done} total time now ${accTimeSpent}ms`);
     }
-    console.log(`setThumbnails batched from ${startBatch} to ${thumbnailBatch}, of ${thumbNails.length - 1}; taking ${window.performance.now() - timeStart}`);
-    if(thumbnailBatch === (thumbNails.length - 1)) {
-        console.log("Finished batching, clearing interval");
+    console.log(`setThumbnails looked at ${done}; taking ${window.performance.now() - timeStart}ms. Must fetch: ${mustFetch.length}, waiting: ${thoseWaiting}`);
+    if(mustFetch.length === 0 && thoseWaiting === 0) {
+        console.log("Done with the interval, clearing.");
         clearInterval(thumbnailInterval);
         thumbnailInterval = null;
     }
@@ -697,9 +731,20 @@ function setQueryTime(seconds) {
     history.replaceState(null, '', url);
 }
 
-function setTimes() {
+function setTimes(ids) {
     thumbnailBatch = 0;
-    var mustFetch = setThumbnails();
+    //var mustFetch = setThumbnails();
+
+    var ROOT = new DebugTimer();
+    for(let id in ids) {
+        const elem = THUMBNAIL_ELEMENTS[id];
+        if(elem) {
+            setElementThumbnail(ROOT, elem, {});
+            delete THUMBNAIL_ELEMENTS[id];
+        } else {
+            console.warn("Could not find element for ", id);
+        }
+    }
 
     if(WATCHING !== null && STATUS.FETCH && STATUS.LOADED == false) {
         var data = CACHE[WATCHING];
@@ -735,12 +780,12 @@ function setTimes() {
         }
     }
 
-    if(mustFetch.length > 0) {
+    /*if(mustFetch.length > 0) {
         postMessage({type: "getTimes", data: mustFetch});
         if(fetchingToast.showing) {
             fetchingToast.setText(`Fetching ${mustFetch.length} more thumbnails`);
         }
-    }
+    }*/
 }
 
 function getThumbnailFor(id) {
@@ -888,7 +933,7 @@ function boot() {
                 console.error("Could not set watching ", err);
                 vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
                 CACHE[WATCHING] = 0;
-                setTimes();
+                setTimes([WATCHING]);
             });
             watchingToast.setText("Fetching video saved time..");
             flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
@@ -962,10 +1007,11 @@ setInterval(function() {
         thumbnailBatch = 0;
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
+        injectScript();
         if(thumbnailInterval) {
             console.log("checkThumbnails: Interval is still ongoing");
         } else {
-            thumbnailInterval = setInterval(checkThumbnails, 4000);
+            thumbnailInterval = setTimeout(checkThumbnails, 1500);
         }
     }
     var w = getId(currentUrl.href);
