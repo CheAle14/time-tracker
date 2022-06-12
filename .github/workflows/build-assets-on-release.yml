@@ -10,7 +10,7 @@ jobs:
     outputs:
       zipAssetId: | 
         ${{ steps.getZipAssetId.outputs.result || 
-            steps.uploadZipAsset.outputs.id }}
+            fromJSON(steps.uploadZipAsset.outputs.assets)[0].id }}
     steps:
       - uses: actions/checkout@v2
   
