@@ -487,7 +487,7 @@ function parseLabel(ariaText) {
     return (hours * 3600) + (mins * 60) + seconds;
 }
 
-function setElementThumbnail(ROOT, element, data) {
+function setElementThumbnail(element, data) {
     if(element.getAttribute("aria-hidden")) {
         console.log("Element is hidden: ", element);
         ROOT.timeEnd();
@@ -614,7 +614,6 @@ function setElementThumbnail(ROOT, element, data) {
 }
 
 var thumbnailBatch = 0;
-var thumbnailInterval = null;
 function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
@@ -634,7 +633,7 @@ function setThumbnails() {
         ROOT.push(`setInterval::${done}`);
 
         var data = {};
-        var rtn = setElementThumbnail(ROOT, element, data);
+        var rtn = setElementThumbnail(element, data);
         if(rtn === "fetch") {
             mustFetch.push(data.id);
         } else if(rtn === "fetching") {
@@ -646,11 +645,6 @@ function setThumbnails() {
         console.debug(`setThumbnails - After ${done} total time now ${accTimeSpent}ms`);
     }
     console.log(`setThumbnails looked at ${done}; taking ${window.performance.now() - timeStart}ms. Must fetch: ${mustFetch.length}, waiting: ${thoseWaiting}`);
-    if(mustFetch.length === 0 && thoseWaiting === 0) {
-        console.log("Done with the interval, clearing.");
-        clearInterval(thumbnailInterval);
-        thumbnailInterval = null;
-    }
     return mustFetch;
 }
 
@@ -735,16 +729,28 @@ function setTimes(ids) {
     thumbnailBatch = 0;
     //var mustFetch = setThumbnails();
 
-    var ROOT = new DebugTimer();
     for(let id in ids) {
         const elem = THUMBNAIL_ELEMENTS[id];
         if(elem) {
-            setElementThumbnail(ROOT, elem, {});
+            setElementThumbnail(elem, {});
             delete THUMBNAIL_ELEMENTS[id];
         } else {
-            console.warn("Could not find element for ", id);
+            if(id !== WATCHING) {
+                console.warn("Could not find element for ", id);
+            }
         }
     }
+
+    var rem = getObjectLength(THUMBNAIL_ELEMENTS);
+    console.log("Remaining thumbnails to fetch: ", rem);
+    if(fetchingToast) {
+        if(rem > 0) {
+            fetchingToast.setText(`Waiting for ${rem} thumbnails`);
+        } else {
+            fetchingToast.hideToast();
+        }
+    }
+
 
     if(WATCHING !== null && STATUS.FETCH && STATUS.LOADED == false) {
         var data = CACHE[WATCHING];
@@ -1008,11 +1014,7 @@ setInterval(function() {
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
         injectScript();
-        if(thumbnailInterval) {
-            console.log("checkThumbnails: Interval is still ongoing");
-        } else {
-            thumbnailInterval = setTimeout(checkThumbnails, 1500);
-        }
+        setTimeout(checkThumbnails, 1500);
     }
     var w = getId(currentUrl.href);
     if(WATCHING !== w) {

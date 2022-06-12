@@ -761,3 +761,21 @@ class DebugTimer {
         return diff;
     }
 }
+
+// Helpers.
+function ObjectLength_Modern( object ) {
+    return Object.keys(object).length;
+}
+
+function ObjectLength_Legacy( object ) {
+    var length = 0;
+    for( var key in object ) {
+        if( object.hasOwnProperty(key) ) {
+            ++length;
+        }
+    }
+    return length;
+}
+
+var getObjectLength =
+    Object.keys ? ObjectLength_Modern : ObjectLength_Legacy;

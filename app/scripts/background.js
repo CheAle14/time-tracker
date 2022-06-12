@@ -724,23 +724,7 @@ async function setup() {
 }
 setup();
 
-// Helpers.
-function ObjectLength_Modern( object ) {
-    return Object.keys(object).length;
-}
 
-function ObjectLength_Legacy( object ) {
-    var length = 0;
-    for( var key in object ) {
-        if( object.hasOwnProperty(key) ) {
-            ++length;
-        }
-    }
-    return length;
-}
-
-var getObjectLength =
-    Object.keys ? ObjectLength_Modern : ObjectLength_Legacy;
 
 /**
  * Compares two software version numbers (e.g. "1.7.1" or "1.2b").
