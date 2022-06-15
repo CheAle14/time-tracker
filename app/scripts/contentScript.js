@@ -65,6 +65,12 @@ const injectedScript ="(" +
         return ids;
     };
 
+    const extractFromVideoWithContextRenderer = (vidR) => {
+        console.log("Looking at ", vidR);
+
+        return [vidR.videoId];
+    };
+
     const extractIds = (js) => {
         var ids = [];
 
@@ -88,6 +94,14 @@ const injectedScript ="(" +
                 ids = ids.concat(gridIds);
             }
 
+            if(continueItem.richItemRenderer) {
+                if(continueItem.richItemRenderer.content) {
+                    if(continueItem.richItemRenderer.content.videoWithContextRenderer) {
+                        ids = ids.concat(extractFromVideoWithContextRenderer(continueItem.richItemRenderer.content.videoWithContextRenderer));
+                    }
+                }
+            }
+
             const sectionRenderer = continueItem.itemSectionRenderer;
             if(sectionRenderer) {
                 const sectionContents = sectionRenderer.contents;
@@ -95,6 +109,8 @@ const injectedScript ="(" +
                     if(content.shelfRenderer) {
                         const gridRenderer = content.shelfRenderer.content.gridRenderer;
                         ids = ids.concat(extractFromGridRenderer(gridRenderer));
+                    } else if(content.videoWithContextRenderer) {
+                        ids = ids.concat(extractFromVideoWithContextRenderer(content.videoWithContextRenderer))
                     }
                 }
             }
@@ -152,7 +168,18 @@ function injectScript() {
         postMessage({type: "getTimes", data: e.detail});
         setTimeout(function() {
             var mf = setThumbnails();
-            console.log("Inject must fetch: ", mf);
+            console.log("Inject found: ", mf);
+
+            var mustF = [];
+            for(let x of mf) {
+                if(e.detail.includes(x)) {
+                } else {
+                    mustF.push(x);
+                }
+            }
+            console.log("Inject must fetch additional: ", mustF);
+            postMessage({type: "getTimes", data: mustF});
+
         }, 4000);
     })
 }
