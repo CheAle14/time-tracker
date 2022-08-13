@@ -484,6 +484,21 @@ function isInPlaylist() {
     }
 }
 
+function isAd() {
+    var vid = getVideo();
+    if(!vid) return null;
+    var parent = vid.parentElement.parentElement;
+    if(!parent) return null;
+    return parent.className.indexOf("ad-showing") >= 0;
+}
+function skipAd() {
+    var arr = document.getElementsByClassName("ytp-ad-skip-button");
+    if(arr && arr.length > 0) {
+        var x = arr[0];
+        if(x) x.click();
+    }
+}
+
 function getVideoLength() {
     var vid = getVideo();
     if(vid) {
@@ -933,6 +948,13 @@ function boot() {
         if(WATCHING in BLACKLISTED_VIDEOS) {
             console.log("Video blacklisted, ignoring");
             STATUS.IGNORE();
+            return;
+        }
+        var ad = isAd();
+        if(ad === true) {
+            console.log("Video is an advertisement, attempting to skip and rechecking");
+            skipAd();
+            setTimeout(boot, 100);
             return;
         }
 
