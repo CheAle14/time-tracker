@@ -95,10 +95,10 @@ const CACHE = new TrackerCache();
 const BLACKLISTED_VIDEOS = {};
 const API_VERSION = 2;
 var WS_QUEUE = new WebSocketQueue();
-var YT_GET_QUEUE = [];
-var YT_SET_QUEUE = {}
+var YT_GET_QUEUE = new BatchGetUpdater(5);
+var YT_SET_QUEUE = new BatchSetUpdater(15);
 var UP_TO_DATE = true;
-var INTERVAL_IDS = {"get": 0, "set": 0, "ws": 0};
+var INTERVAL_IDS = {"ws": 0, "queues": 0};
 var WS = null;
 
 var WS_CALLBACK = {};
@@ -196,7 +196,7 @@ function onMessage(message, sender, response) {
     } else if(message.type === "getTimes") {
         var instantResponse = {};
         for(const vId of message.data) {
-            if(!(vId in YT_GET_QUEUE)) {
+            if(!YT_GET_QUEUE.contains(vId)) {
                 var cached = CACHE.Fetch(vId);
                 if(cached) {
                     instantResponse[vId] = cached.t;
@@ -211,7 +211,7 @@ function onMessage(message, sender, response) {
     } else if(message.type === "setTime") {
         for(const vId in message.data) {
             var time = message.data[vId];
-            YT_SET_QUEUE[vId] = time;
+            YT_SET_QUEUE.update(vId, time);
             CACHE.Insert(new YoutubeCacheItem(vId, Date.now(), time));
         }
     } else if(message.type === "setWatching") {
@@ -570,10 +570,13 @@ async function setToken(token) {
     postMessage({type: "sendInfo", data: INFO});
 }
 
-function getTimes(timesObject, callback, error_callback) {
-    query = [];
-    var respJson = {};
-    for(let key of timesObject) {
+function findInCache(idArray) {
+    const rtn = {
+        hit: {},
+        miss: []
+    };
+    console.log("Iterating ", idArray);
+    for(let key of idArray) {
         if(key in CACHE) {
             var cachedData = CACHE.Fetch(key);
             if(cachedData.Kind !== CACHE_KIND.YOUTUBE)
@@ -582,11 +585,19 @@ function getTimes(timesObject, callback, error_callback) {
             var cachedAt = cachedData.cachedAt;
             var diff = Date.now() - cachedAt;
             console.debug(`GET: Found ${key} in cache, out of date by ${diff}ms`);
-            respJson[key] = time;
+            rtn.hit[key] = time;
             continue;
         }
-        query.push(key);
+        rtn.miss.push(key);
     }
+    return rtn;
+}
+
+function getTimes(timesObject, callback, error_callback) {
+    const rtn = findInCache(timesObject);
+    var query = rtn.miss;
+    var respJson = rtn.hit;
+    
     if(query.length === 0) {
         callback(respJson);
         return;
@@ -625,32 +636,32 @@ async function setTimes(timesObject, callback) {
     })
 }
 
-
-function processGetQueue() {
-    if(YT_GET_QUEUE.length > 0) {
-        var q = YT_GET_QUEUE.splice(0, 75);
-        getTimes(q, function(times) {
-            console.log("Gotten times! Sending... ");
-            postMessage({"type": "gotTimes", data: times});
-        });
+function processQueues() {
+    if(YT_GET_QUEUE.canSend()) {
+        var q = YT_GET_QUEUE.fetch(75);
+        var rtn = findInCache(q);
+        console.log("Looked at cache: ", rtn);
+        if(getObjectLength(rtn.hit) > 0) {
+            console.log("Some of the GET queue was within cache, returning that quickly:");
+            postMessage({"type": "gotTimes", data: rtn.hit});
+        }
+        if(rtn.miss.length > 0) {
+            getTimes(rtn.miss, function(times) {
+                console.log("Gotten times! Sending... ");
+                postMessage({"type": "gotTimes", data: times});
+            });
+        }
     }
-    if(STOP_QUEUE_NEXT) {
-        clearInterval(INTERVAL_IDS.get);
-        console.log("Get queue ceased")
-    }
-}
-function processSetQueue() {
-    if(getObjectLength(YT_SET_QUEUE) > 0) {
-        console.log(`Sending queue of ${getObjectLength(YT_SET_QUEUE)} items`);
-        var q = YT_SET_QUEUE;
-        YT_SET_QUEUE = {}
+    if(YT_SET_QUEUE.canSend()) {
+        console.log(`Sending SET ${YT_SET_QUEUE.length} items`);
+        var q = YT_SET_QUEUE.fetch();
         setTimes(q, function(saved) {
             postMessage({type: "savedTime", data: saved});
         });
     }
     if(STOP_QUEUE_NEXT) {
-        clearInterval(INTERVAL_IDS.set);
-        console.log("Set queue ceased");
+        clearInterval(INTERVAL_IDS.queues);
+        console.log("Queues ceased");
     }
 }
 
@@ -688,10 +699,8 @@ async function alarmRaised(alarm) {
 
 function startProcessQueues() {
     STOP_QUEUE_NEXT = false;
-    clearInterval(INTERVAL_IDS.get);
-    clearInterval(INTERVAL_IDS.set);
-    INTERVAL_IDS.get = setInterval(processGetQueue, INFO.interval.get);
-    INTERVAL_IDS.set = setInterval(processSetQueue, INFO.interval.set);
+    clearInterval(INTERVAL_IDS.queues);
+    INTERVAL_IDS.queues = setInterval(processQueues, 1000);
 }
 
 

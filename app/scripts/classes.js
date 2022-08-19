@@ -719,6 +719,69 @@ class StateInfo {
 
 }
 
+class BatchUpdater {
+    constructor(period) {
+        this.lastUpdate = null;
+        this.data = null;
+        this.length = 0;
+        this.period = period * 1000;
+    }
+    diff() {
+        return Date.now() - this.lastUpdate;
+    }
+    canSend() {
+        return this.length > 0 && this.diff() > this.period;
+    }
+    clear() {
+        this.length = 0;
+    }
+    _update(amount) {
+        this.length += 1;
+        this.lastUpdate = Date.now();
+    }
+}
+class BatchGetUpdater extends BatchUpdater {
+    constructor(period) {
+        super(period);
+        this.data = [];
+    }
+    push(id) {
+        this.data.push(id);
+        this._update(1);
+    } 
+    fetch(amount) {
+        var q = this.data.splice(0, amount);
+        this.length -= q.length;
+        return q;
+    }
+    contains(id) {
+        return id in this.data;
+    }
+    clear() {
+        super.clear();
+        this.data = [];
+    }
+}
+class BatchSetUpdater extends BatchUpdater {
+    constructor(period) {
+        super(period);
+        this.data = {};
+    }
+    update(id, value) {
+        this.data[id] = value;
+        this._update(1);
+    }
+    clear() {
+        super.clear();
+        this.data = {};
+    }
+    fetch() {
+        var q = this.data;
+        this.clear();
+        return q;
+    }
+}
+
 class DebugTimer {
     /**
      * 
