@@ -736,7 +736,7 @@ class BatchUpdater {
         this.length = 0;
     }
     _update(amount) {
-        this.length += 1;
+        this.length += amount;
         this.lastUpdate = Date.now();
     }
 }
@@ -768,8 +768,15 @@ class BatchSetUpdater extends BatchUpdater {
         this.data = {};
     }
     update(id, value) {
+        const existing = this.data[id];
         this.data[id] = value;
-        this._update(1);
+        if(existing) {
+            // already there, so no new item
+            this._update(0);
+        } else {
+            // not there, so its new
+            this._update(1);
+        }
     }
     clear() {
         super.clear();

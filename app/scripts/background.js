@@ -100,6 +100,7 @@ var YT_SET_QUEUE = new BatchSetUpdater(15);
 var UP_TO_DATE = true;
 var INTERVAL_IDS = {"ws": 0, "queues": 0};
 var WS = null;
+var STOP_QUEUE_NEXT = false;
 
 var WS_CALLBACK = {};
 var WS_NORESPONSE = {};
