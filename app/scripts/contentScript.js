@@ -1013,6 +1013,10 @@ function saveTime() {
     }
     navigateToPort = {};
     var time = getVideo().currentTime;
+    if(time < 10) {
+        console.log("Not saving time: too close to start");
+        return;
+    }
     navigateToPort[WATCHING] = time;
     CACHE[WATCHING] = time;
     postMessage({type: "setTime", data: navigateToPort});
