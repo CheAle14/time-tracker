@@ -767,33 +767,7 @@ function setQueryTime(seconds) {
     history.replaceState(null, '', url);
 }
 
-function setTimes(ids) {
-    thumbnailBatch = 0;
-    //var mustFetch = setThumbnails();
-
-    for(let id in ids) {
-        const elem = THUMBNAIL_ELEMENTS[id];
-        if(elem) {
-            setElementThumbnail(elem, {});
-            delete THUMBNAIL_ELEMENTS[id];
-        } else {
-            if(id !== WATCHING) {
-                console.warn("Could not find element for ", id);
-            }
-        }
-    }
-
-    var rem = getObjectLength(THUMBNAIL_ELEMENTS);
-    console.log("Remaining thumbnails to fetch: ", rem);
-    if(fetchingToast) {
-        if(rem > 0) {
-            fetchingToast.setText(`Waiting for ${rem} thumbnails`);
-        } else {
-            fetchingToast.hideToast();
-        }
-    }
-
-
+function checkWatchingData() {
     if(WATCHING !== null && STATUS.FETCH && STATUS.LOADED == false) {
         var data = CACHE[WATCHING];
         if(data !== null && data !== undefined) {
@@ -827,6 +801,36 @@ function setTimes(ids) {
             watchingToast.hideToast();
         }
     }
+}
+
+function setTimes(ids) {
+    thumbnailBatch = 0;
+    //var mustFetch = setThumbnails();
+
+    for(let id in ids) {
+        const elem = THUMBNAIL_ELEMENTS[id];
+        if(elem) {
+            setElementThumbnail(elem, {});
+            delete THUMBNAIL_ELEMENTS[id];
+        } else {
+            if(id !== WATCHING) {
+                console.warn("Could not find element for ", id);
+            }
+        }
+    }
+
+    var rem = getObjectLength(THUMBNAIL_ELEMENTS);
+    console.log("Remaining thumbnails to fetch: ", rem);
+    if(fetchingToast) {
+        if(rem > 0) {
+            fetchingToast.setText(`Waiting for ${rem} thumbnails`);
+        } else {
+            fetchingToast.hideToast();
+        }
+    }
+
+
+    checkWatchingData()
 
     /*if(mustFetch.length > 0) {
         postMessage({type: "getTimes", data: mustFetch});
@@ -952,8 +956,20 @@ function boot() {
         }
         var ad = isAd();
         if(ad === true) {
-            console.log("Video is an advertisement, attempting to skip and rechecking");
-            skipAd();
+            console.log("Video is an advertisement, attempting to skip and rechecking; fetching time in background");
+            if(STATUS.AD) {
+                // we've already sent one message, so just try and skip
+                skipAd();
+            } else {
+                // sent one message on the first pass
+                postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
+                    console.error("Could not set watching ", err);
+                    vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time (ad) " + err.data.reason, {color: "red"}, -1));
+                    CACHE[WATCHING] = 0;
+                    setTimes([WATCHING]);
+                });
+            }
+            STATUS.AD = true;
             setTimeout(boot, 100);
             return;
         }
@@ -980,20 +996,27 @@ function boot() {
             STATUS.SYNC = true;
             STATUS.LOADED = true;
         } else {
-            console.log("Video nominal, pausing")
-            pause(`Boot, length ${typeof length} ${length}; playlist: ${playlist}`);
+            console.log("Video nominal, pausing");
+            pause(`Boot, adv: ${STATUS.AD} length ${length}; pl: ${playlist}`);
             if(IS_MOBILE === false)
                 addVideoListeners();
-            postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
-                console.error("Could not set watching ", err);
-                vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
-                CACHE[WATCHING] = 0;
-                setTimes([WATCHING]);
-            });
-            watchingToast.setText("Fetching video saved time..");
-            flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
+            if(!STATUS.AD) {
+                postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
+                    console.error("Could not set watching ", err);
+                    vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
+                    CACHE[WATCHING] = 0;
+                    setTimes([WATCHING]);
+                });
+                watchingToast.setText("Fetching video saved time..");
+                flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
+            }
             STATUS.SYNC = true;
             STATUS.FETCH = true;
+            checkWatchingData();
+        }
+        if(STATUS.AD) {
+            STATUS.AD = false;
+            console.log("Advertisement has finished, setting flag to false.");
         }
     }
 }

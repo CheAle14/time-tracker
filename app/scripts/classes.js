@@ -659,6 +659,7 @@ class StateInfo {
         this._playlist = false;
         this._halted = false;
         this._loaded = false;
+        this._ad = false;
     }
     
     /**
@@ -669,6 +670,16 @@ class StateInfo {
     }
     set FETCH(value) {
         this._fetch = !!value;
+    }
+
+    /**
+     * @returns {boolean} Whether we're waiting for an advertisement to finish playing
+     */
+    get AD() {
+        return this._ad;
+    }
+    set AD(value) {
+        this._ad = !!value;
     }
 
     /**
@@ -722,6 +733,7 @@ class StateInfo {
 class BatchUpdater {
     constructor(period) {
         this.lastUpdate = null;
+        this.oldestUpdate = null;
         this.data = null;
         this.length = 0;
         this.period = period * 1000;
@@ -734,10 +746,14 @@ class BatchUpdater {
     }
     clear() {
         this.length = 0;
+        this.oldestUpdate = null;
     }
     _update(amount) {
         this.length += amount;
         this.lastUpdate = Date.now();
+        if(!this.oldestUpdate) {
+            this.oldestUpdate = this.lastUpdate;
+        }
     }
 }
 class BatchGetUpdater extends BatchUpdater {
@@ -766,6 +782,11 @@ class BatchSetUpdater extends BatchUpdater {
     constructor(period) {
         super(period);
         this.data = {};
+    }
+    diff() {
+        var d1 = super.diff();
+        var d2 = Date.now() - this.oldestUpdate;
+        return Math.max(d1, d2);
     }
     update(id, value) {
         const existing = this.data[id];
