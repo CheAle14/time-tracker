@@ -1,3 +1,5 @@
+console.log("Loaded popup.js");
+import {INTERNAL} from "./classes.js"
 
 var text = document.getElementById("text");
 var inp = document.getElementById("tokenI");
@@ -134,7 +136,4 @@ function navigateToPort(event) {
     postMessage(new InternalPacket("highlightTab", portId));
 }
 
-setInterval(function() {
-    port.postMessage({type: "getData"});
-}, 5000);
-port.postMessage({type: "getData"});
+postMessage({type: "getData"});

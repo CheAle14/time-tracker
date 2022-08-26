@@ -2,7 +2,7 @@
 /**
  * Packets sent internally via chrome.runtime and ports.
  */ 
-class InternalPacket {
+export class InternalPacket {
     /**
      * Gets an internal packet of the given type
      * @param {INTERNAL} type 
@@ -17,7 +17,7 @@ class InternalPacket {
 /**
  * Internal packet to indicate state of video play
  */
-class StatePacket extends InternalPacket {
+export class StatePacket extends InternalPacket {
     /**
      * 
      * @param {boolean} playing Whether the video should play or be paused
@@ -45,7 +45,7 @@ class StatePacket extends InternalPacket {
 /**
  * Represents an error sent to failure callback when a packet to the websocket fails to get a response.  
  */
-class NoResponsePacket extends InternalPacket {
+export class NoResponsePacket extends InternalPacket {
     constructor(reason) {
         super(INTERNAL.NO_RESPONSE, {
             reason: reason
@@ -74,7 +74,7 @@ class NoResponsePacket extends InternalPacket {
 /**
  * Packets sent to or from websocket connection
  */
- class WebSocketPacket {
+ export class WebSocketPacket {
     /**
      * Creates a packet to be sent over the websocket with provided information
      * @param {EXTERNAL} id 
@@ -91,7 +91,7 @@ class NoResponsePacket extends InternalPacket {
 /**
  * An item stored in cache
  */
-class CacheItem {
+export class CacheItem {
     /**
      * 
      * @param {CACHE_KIND} kind 
@@ -131,14 +131,14 @@ class CacheItem {
     }
 }
 
-class YoutubeCacheItem extends CacheItem {
+export class YoutubeCacheItem extends CacheItem {
     constructor(id, cachedAt, vidTime) {
         super(CACHE_KIND.YOUTUBE, id, cachedAt);
         this.t = vidTime;
     }
 }
 
-class RedditCacheItem extends CacheItem {
+export class RedditCacheItem extends CacheItem {
     constructor(id, cachedAt, visitedAt, count) {
         super(CACHE_KIND.REDDIT, id, cachedAt);
         this.count = count;
@@ -151,7 +151,7 @@ class RedditCacheItem extends CacheItem {
     }
 }
 
-class TrackerCache {
+export class TrackerCache {
     constructor() {
         this._cache = {};
     }
@@ -208,7 +208,7 @@ class TrackerCache {
     }
 }
 
-class WebSocketQueue {
+export class WebSocketQueue {
     constructor() {
         this._queue = [];
         this._waiting = 0;
@@ -364,7 +364,7 @@ class WebSocketQueue {
     }
 }
 
-const CACHE_KIND = {
+export const CACHE_KIND = {
     YOUTUBE: "video",
     REDDIT: "reddit"
 }
@@ -373,7 +373,7 @@ const CACHE_KIND = {
 /**
  * Types for packets sent internally, between background and content scripts.
  */
-const INTERNAL = {
+export const INTERNAL = {
     SET_STATE: "setState",
     GET_LATEST: "getLatest",
     GOT_TIMES: "gotTimes",
@@ -390,7 +390,7 @@ const INTERNAL = {
 /**
  * Ids for packets sent from background to websocket.
  */
-const EXTERNAL = {
+export const EXTERNAL = {
     UPDATE_IGNORED_VIDEOS: "UpdateIgnored",
     VISITED_THREAD: "VisitedThread",
     GET_THREADS: "GetThreads",
@@ -401,7 +401,7 @@ const EXTERNAL = {
 }
 
 
-const HELPERS = {
+export const HELPERS = {
     /**
      * Returns the formatted representation of the time in seconds (eg, hh:mm:ss or mm:ss if below an hour)
      * @param {number} diff Time in seconds
@@ -420,7 +420,7 @@ const HELPERS = {
     }
 }
 
-class VideoToolTipFlavour {
+export class VideoToolTipFlavour {
     constructor(text, style, duration) {
         this.text = text;
         this.style = style;
@@ -443,7 +443,7 @@ class VideoToolTipFlavour {
     }
 }
 
-class VideoToolTip {
+export class VideoToolTip {
     defaultStyle() {
         return {};
     }
@@ -623,7 +623,7 @@ class VideoToolTip {
     }
 }
 
-class ConsistentToast {
+export class ConsistentToast {
     constructor(config) {
         this.config = config;
         this.toast = null;
@@ -648,7 +648,7 @@ class ConsistentToast {
     }
 }
 
-class StateInfo {
+export class StateInfo {
     constructor() {
         this.reset();
     }
@@ -738,7 +738,7 @@ class StateInfo {
 
 }
 
-class BatchUpdater {
+export class BatchUpdater {
     constructor(period) {
         this.lastUpdate = null;
         this.oldestUpdate = null;
@@ -764,7 +764,7 @@ class BatchUpdater {
         }
     }
 }
-class BatchGetUpdater extends BatchUpdater {
+export class BatchGetUpdater extends BatchUpdater {
     constructor(period) {
         super(period);
         this.data = [];
@@ -786,7 +786,7 @@ class BatchGetUpdater extends BatchUpdater {
         this.data = [];
     }
 }
-class BatchSetUpdater extends BatchUpdater {
+export class BatchSetUpdater extends BatchUpdater {
     constructor(period) {
         super(period);
         this.data = {};
@@ -818,7 +818,7 @@ class BatchSetUpdater extends BatchUpdater {
     }
 }
 
-class DebugTimer {
+export class DebugTimer {
     /**
      * 
      * @param {Boolean} log 
@@ -876,5 +876,5 @@ function ObjectLength_Legacy( object ) {
     return length;
 }
 
-var getObjectLength =
+export var getObjectLength =
     Object.keys ? ObjectLength_Modern : ObjectLength_Legacy;
