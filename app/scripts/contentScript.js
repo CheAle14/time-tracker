@@ -499,6 +499,41 @@ function skipAd() {
     }
 }
 
+function getChannelName() {
+    var cont = document.getElementById("above-the-fold");
+    console.log("CHANNEL: ", cont);
+    if(cont) {
+        return cont.getElementsByTagName("ytd-channel-name")[0];
+    } else {
+        return null;
+    }
+}
+function getChannelBadges() {
+    if(IS_MOBILE) return [];
+    var cont = getChannelName();
+    if(cont == null) return null;
+    var badgesCont = cont.getElementsByTagName("ytd-badge-supported-renderer")[0];
+    var a = [];
+    if(badgesCont) {
+        if(badgesCont.children) {
+            for(let child of badgesCont.children) {
+                console.log(child);
+                var lbl = child.getAttribute("aria-label");
+                if(lbl) 
+                    a.push(lbl);
+            }
+        }
+    }
+    return a;
+}
+
+function hasMusicBadge(badges) {
+    for(let badge of badges) {
+        if(badge.indexOf("Artist") >= 0) return true;
+    }
+    return false;
+}
+
 function getVideoLength() {
     var vid = getVideo();
     if(vid) {
@@ -954,10 +989,20 @@ function boot() {
             STATUS.IGNORE();
             return;
         }
+
+        var music = false;
+        if(STATUS.BADGES === null) {
+            STATUS.BADGES = getChannelBadges();
+        } else {
+            music = hasMusicBadge(STATUS.BADGES);
+        }
+
+
+
         var ad = isAd();
         if(ad === true) {
             console.log("Video is an advertisement, attempting to skip and rechecking; fetching time in background");
-            if(STATUS.AD) {
+            if(STATUS.AD || music) {
                 // we've already sent one message, so just try and skip
                 skipAd();
             } else {
@@ -971,6 +1016,16 @@ function boot() {
             }
             STATUS.AD = true;
             setTimeout(boot, 100);
+            return;
+        }
+        if(music) {
+            console.log("Video is a music video, ignoring.");
+            STATUS.IGNORE();
+            return;
+        }
+
+        if(STATUS.BADGES === null) {
+            setTimeout(boot, 250);
             return;
         }
 

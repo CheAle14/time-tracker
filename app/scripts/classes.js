@@ -660,6 +660,7 @@ class StateInfo {
         this._halted = false;
         this._loaded = false;
         this._ad = false;
+        this._badges = null;
     }
     
     /**
@@ -717,6 +718,13 @@ class StateInfo {
     }
     set LOADED(v) {
         this._loaded = v;
+    }
+
+    get BADGES() {
+        return this._badges;
+    }
+    set BADGES(v) {
+        this._badges = v;
     }
 
     /**
