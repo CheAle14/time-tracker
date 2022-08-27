@@ -1,3 +1,4 @@
+'use strict';
 import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength } from "./classes.js";
 var port = null;
 var CONNECTED = true;
@@ -325,7 +326,7 @@ function getVideo() {
 
 function isInPlaylist() {
     if(IS_MOBILE) {
-        doc = document.getElementsByTagName("ytm-playlist")[0];
+        var doc = document.getElementsByTagName("ytm-playlist")[0];
         return !!doc;
     } else {
         const urlSearchParams = new URLSearchParams(window.location.search);
