@@ -18,7 +18,7 @@
                 "https://youtube.com/*",
                 "https://*.youtube.com/*"
             ],
-            "js": ["toast/toast.js", "scripts/classes.js", "scripts/contentScript.js"],
+            "js": ["toast/toast.js", "scripts/content_yt.js"],
             "css": ["toast/toast.css"]
         },
         {
@@ -33,5 +33,14 @@
     "background": {
         "service_worker": "worker.js",
         "type": "module"
-    }
+    },
+    "web_accessible_resources": [
+        {
+          "resources": [ "scripts/youtube.js", "scripts/classes.js", "scripts/inject_yt.js" ],
+          "matches": [
+            "https://youtube.com/*",
+            "https://*.youtube.com/*"
+            ]
+        }
+      ]
 }

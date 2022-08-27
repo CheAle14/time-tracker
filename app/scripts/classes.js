@@ -206,6 +206,16 @@ export class TrackerCache {
         console.debug("[CACHE] Cleared cache.");
         this._cache = {};
     }
+
+    Load(data) {
+        for(var obj of data) {
+            if(obj._kind === CACHE_KIND.YOUTUBE) {
+                this.Add(new YoutubeCacheItem(obj.id, obj.cachedAt, obj.t));
+            } else {
+                this.Add(new RedditCacheItem(obj.id, obj.cachedAt, obj.visits, obj.count))
+            }
+        }
+    }
 }
 
 export class WebSocketQueue {
@@ -398,6 +408,12 @@ export const EXTERNAL = {
     GET_LATEST: "GetLatest",
     SET_TIMES: "SetTimes",
     GET_VERSION: "GetVersion"
+}
+
+export function pad(n, width, z) {
+    z = z || '0';
+    n = n + '';
+    return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
 }
 
 
@@ -858,6 +874,32 @@ export class DebugTimer {
         if(this.log)
             console.timeEnd(v);
         return diff;
+    }
+}
+
+export class DeferredPromise {
+    constructor(timeout) {
+        this.isResolved = false;
+        this.isRejected = false;
+        this.promise = new Promise((resolve, reject)=> {
+            this.reject = (reason) => {
+                this.isRejected = true;
+                console.log("Rejecting deferred promise ", reason);
+                reject(reason);
+            };
+            this.resolve = (reason) => {
+                console.log("Resolving deferring promise ", reason);
+                this.isResolved = true;
+                clearTimeout(this.tm);
+                resolve(reason);
+            };
+            if(timeout) {
+                this.tm = setTimeout(() => {
+                    if(!this.isResolved)
+                        this.reject("Timed out");
+                }, timeout)
+            }
+        })
     }
 }
 
