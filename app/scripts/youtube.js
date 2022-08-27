@@ -1,5 +1,5 @@
 import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength } from "./classes.js";
-var port = chrome.runtime.connect();
+var port = null;
 var CONNECTED = true;
 const STATUS = new StateInfo();
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
@@ -58,12 +58,23 @@ export function postMessage(packet, callback, failure) {
     port.postMessage(packet);
 }
 
+var reconnect_timer = null;
+
 function connectToExtension() {
+    if(port) {
+        console.log("Disconnecting from backend extension for a reconnect");
+        port.disconnect();
+        clearTimeout(reconnect_timer);
+        reconnect_timer = null;
+    }
     console.log("Connecting to backend");
     port = chrome.runtime.connect();
 
     port.onMessage.addListener(portOnMessage);
     port.onDisconnect.addListener(portOnDisconnect);
+    reconnect_timer = setTimeout(() => {
+        connectToExtension();
+    }, 295e3);
 }
 
 function portOnMessage(message, sender, response) {
@@ -774,7 +785,8 @@ function addVideoListeners() {
             return;
         if(CONNECTED)
             saveTime();
-        clearInterval(videoSync);
+        clearInterval(syncInterval);
+        syncInterval = null;
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
@@ -801,7 +813,10 @@ function addVideoListeners() {
             console.error("Cannot play video: not syncing");
             return;
         }
-        setInterval(videoSync, 5000);
+        if(syncInterval) {
+            clearInterval(syncInterval);
+        }
+        syncInterval = setInterval(videoSync, 15000);
         vidToolTip.Paused = false;
         vidToolTip.Ended = false;
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
@@ -813,7 +828,8 @@ function addVideoListeners() {
         if(STATUS.SYNC == false)
             return;
         saveTime();
-        clearInterval(videoSync);
+        clearInterval(syncInterval);
+        syncInterval = null;
         vidToolTip.Ended = true;
     }
     vid.setAttribute("mlapi-events", "true")
@@ -944,6 +960,7 @@ function saveTime() {
     setQueryTime(time);
 }
 
+var syncInterval = null;
 function videoSync() {
     if(getVideo().paused || STATUS.HALTED)
         return;

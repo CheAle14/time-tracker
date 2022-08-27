@@ -1,4 +1,5 @@
 console.log("Reddit content script loaded!");
+import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, InternalPacket } from "./classes.js";
 
 var SEQUENCE = 1;
 var CALLBACKS = {};
@@ -277,7 +278,7 @@ function addTimeSelectionBox(times) {
     var selectElem = document.createElement("select");
     selectElem.id = "mlapi-visits";
 
-    setSelected = false;
+    var setSelected = false;
     for(var time of times) {
         var opt = document.createElement("option");
         opt.value = time;
@@ -419,7 +420,7 @@ function generate_comment_style(comment_time, since) {
     let style = config.comment_style;
 
     style = style.replace(/\s+/g, ' ');
-    style = style.replace(/%color/g, this.get_color(Date.now() - comment_time, Date.now() - since));
+    style = style.replace(/%color/g, get_color(Date.now() - comment_time, Date.now() - since));
 
     return style;
 }

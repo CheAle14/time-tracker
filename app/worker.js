@@ -1,5 +1,5 @@
 console.log("Loaded worker.");
-import {DeferredPromise, EXTERNAL, getObjectLength, HELPERS, INTERNAL, InternalPacket, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
+import {DeferredPromise, EXTERNAL, getObjectLength, HELPERS, INTERNAL, InternalPacket, RedditCacheItem, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
 
 // DONE: setup websocket connection 
 // DONE: setup popup page get information. (DONE, except for other tab info)
@@ -60,6 +60,31 @@ function id(_tab) {
 function getName(_tab) {
     return _tab.sender.tab ? `${id(_tab)} @ ${_tab.sender.url}` : "popup @ " + _tab.sender.url;
 }
+
+function checkCloseWs() {
+    if(getObjectLength(PORTS) === 0) {
+        console.log("All ports closed");
+        if(WS) {
+            if(getObjectLength(WS_CALLBACK) > 0) {
+                console.log("Not closing WS, as there's still outstanding requests.");
+            } else {
+                console.log("Closing WS.");
+                WS.close();
+                WS = null;
+            }
+        }
+    }
+}
+
+chrome.runtime.onSuspend.addListener(() => {
+    console.log("WE ARE SUSPENDING");
+    checkCloseWs();
+});
+
+chrome.runtime.onSuspendCanceled.addListener(() => {
+    console.log("SUSPENSION CANCELLED - WE ARE BACK IN ORDER.");
+});
+
 chrome.runtime.onConnect.addListener(function(port) {
     port.id = id(port);
     console.log("[CONNECT] ", port);
@@ -79,15 +104,6 @@ chrome.runtime.onConnect.addListener(function(port) {
     port.onDisconnect.addListener((d) => {
         console.log(`[DISCONNECT] ${port.id}`);
         delete PORTS[port.id];
-
-        if(getObjectLength(PORTS) === 0) {
-            console.log("All ports closed, closing WS if it exists");
-            if(WS) {
-                WS.close();
-                WS = null;
-            }
-        }
-
     });
     init().then(() => {
         port.postMessage({type: "sendInfo", data: INFO});
@@ -311,7 +327,57 @@ async function handleMessage(message, sender, reply) {
     } else if(message.type === "setTime") {
         var result = await fetchWs(new WebSocketPacket(EXTERNAL.SET_TIMES, message.data));
         reply(new InternalPacket("savedTime", message.data));
+    } else if(message.type === INTERNAL.GET_REDDIT_COUNT) {
+        var result = await getThreadCounts(message.data);
+        var p = new InternalPacket("response", result);
+        p.res = message.seq;
+        reply(p);
+    } else if(message.type === INTERNAL.REDDIT_VISITED) {
+        if(!message.data.id) {
+            console.warn("Received null thread ID, not handling.");
+            return;
+        }
+        var existing = CACHE.Fetch(message.data.id);
+        if(!existing) {
+            existing = new RedditCacheItem(message.data.id, 0, [], 0);
+        }
+        existing.cachedAt = new Date();
+        existing.visits.push(Date.now());
+        existing.count = message.data.count;
+        CACHE.Insert(existing);
+        var rep = await fetchWs(new WebSocketPacket(EXTERNAL.VISITED_THREAD, message.data));
+        var p = new InternalPacket("response", rep);
+        p.res = message.seq;
+        reply(p);
     }
+}
+
+async function getThreadCounts(idArray) {
+    var result = {};
+    var mustfetch = [];
+    for(let id of idArray) {
+        var cached = CACHE.Fetch(id);
+        if(cached) {
+            result[id] = cached;
+        } else {
+            mustfetch.push(id);
+            result[id] = new RedditCacheItem(id, Date.now(), [], -1); // set something as default
+        }
+    }
+    if(mustfetch.length > 0) {
+        var wsResponse = await fetchWs(new WebSocketPacket(EXTERNAL.GET_THREADS, mustfetch));
+        for(let id in wsResponse.content) {
+            var data = wsResponse.content[id];
+            var item = new RedditCacheItem(id, Date.now(), data.when, data.count);
+            CACHE.Add(item);
+            result[id] = item;
+        }
+    }
+    console.log("CACHE: ", CACHE);
+    if(CACHE.dirty) {
+        await setState("cache", CACHE.Save());
+    }
+    return result;
 }
 
 async function getTimes(idArray) {
@@ -364,7 +430,7 @@ async function wsMessage(event) {
         } else {
             console.logws("Unknown packet response ", packet.res);
         }
-        
+
         return;
     }
 

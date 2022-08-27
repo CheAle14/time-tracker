@@ -27,7 +27,7 @@
                 "https://reddit.com/*",
                 "https://*.reddit.com/*"
             ],
-            "js": ["tinycolor/tinycolor.js", "toast/toast.js", "scripts/classes.js", "scripts/reddit/reddit.js"],
+            "js": ["tinycolor/tinycolor.js", "toast/toast.js", "scripts/content_reddit.js"],
             "css": ["reddit.css", "toast/toast.css"]
         }
     ],
@@ -46,6 +46,13 @@
             "https://*.youtube.com/*"
             ]
         },
+        {
+            "resources": [ "scripts/reddit.js", "scripts/classes.js", "scripts/inject_reddit.js" ],
+            "matches": [
+              "https://reddit.com/*",
+              "https://*.reddit.com/*"
+              ]
+          },
         {
             "resources": ["scripts/inject_tab.js"],
             "matches": [
