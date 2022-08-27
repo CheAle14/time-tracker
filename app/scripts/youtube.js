@@ -6,7 +6,7 @@ var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var FAILS = {};
 var SEQUENCE = 1;
-var BLACKLISTED_VIDEOS = {};
+var BLOCKLISTED_VIDEOS = {};
 var THUMBNAIL_ELEMENTS = {};
 
 const ROOT = new DebugTimer(/*log*/ false);
@@ -59,6 +59,7 @@ export function postMessage(packet, callback, failure) {
 }
 
 function connectToExtension() {
+    console.log("Connecting to backend");
     port = chrome.runtime.connect();
 
     port.onMessage.addListener(portOnMessage);
@@ -67,8 +68,8 @@ function connectToExtension() {
 
 function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
-    if(message.type === "blacklists") {
-        BLACKLISTED_VIDEOS = message.data;
+    if(message.type === "blocklist") {
+        BLOCKLISTED_VIDEOS = message.data;
     } else if(message.type === "gotTimes") {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
@@ -260,23 +261,7 @@ function getVideoTxt() {
     return txt;
 }
 
-function getId(url) {
-    url = url || window.location.href;
-    var startIndex = url.indexOf("?v=");
-    if(startIndex === -1)
-        return null;
-    var id = url.substring(startIndex + 3);
 
-    var index = id.indexOf("&");
-    if(index !== -1) {
-        id = id.substring(0, index);
-    }
-    index = id.indexOf("#");
-    if(index !== -1) {
-        id = id.substring(0, index);
-    }
-    return id;
-}
 
 function pad(value, length) {
     var s = value.toString();
@@ -429,7 +414,7 @@ function setElementThumbnail(element, data) {
         return "hidden";
     }
     var anchor = element.parentElement.parentElement.parentElement;
-    var id = getId(anchor.href);
+    var id = HELPERS.GetVideoId(anchor.href);
     data.id = id;
     if(!id) {
         console.log("Could not get ID:", element);
@@ -835,14 +820,14 @@ function addVideoListeners() {
 }
 
 function boot() {
-    WATCHING = getId();
+    WATCHING = HELPERS.GetVideoId(window.location.href);
     thumbnailBatch = 0;
     if(WATCHING) {
         var length = getVideoLength();
         var playlist = isInPlaylist();
         console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
 
-        if(WATCHING in BLACKLISTED_VIDEOS) {
+        if(WATCHING in BLOCKLISTED_VIDEOS) {
             console.log("Video blacklisted, ignoring");
             STATUS.IGNORE();
             return;
@@ -1005,7 +990,7 @@ setInterval(function() {
         injectScript();
         setTimeout(checkThumbnails, 1500);
     }
-    var w = getId(currentUrl.href);
+    var w = HELPERS.GetVideoId(currentUrl.href);
     if(WATCHING !== w) {
         delete CACHE[w];
         WATCHING = w;

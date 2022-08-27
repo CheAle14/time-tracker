@@ -129,12 +129,25 @@ export class CacheItem {
         var expiresAt = new Date(this.cachedAt.getTime() + (this.ttl * 1000));
         return Date.now() > expiresAt;
     }
+
+    Save() {
+        return {
+            _kind: this._kind,
+            id: this.id,
+            cachedAt: this.cachedAt.getTime()
+        };
+    }
 }
 
 export class YoutubeCacheItem extends CacheItem {
     constructor(id, cachedAt, vidTime) {
         super(CACHE_KIND.YOUTUBE, id, cachedAt);
         this.t = vidTime;
+    }
+    Save() {
+        var d = super.Save();
+        d.t = this.t;
+        return d;
     }
 }
 
@@ -149,11 +162,18 @@ export class RedditCacheItem extends CacheItem {
     get Visits() {
         return this.visits;
     }
+    Save() {
+        var d = super.Save();
+        d.count = this.count;
+        d.visits = this.visits;
+        return d;
+    }
 }
 
 export class TrackerCache {
     constructor() {
         this._cache = {};
+        this.dirty = false;
     }
 
     /**
@@ -164,6 +184,7 @@ export class TrackerCache {
         item.cachedAt = new Date();
         console.debug(`[CACHE] Inserted ${item.id} into cache at ${Date.now()}`);
         this._cache[item.id] = item;
+        this.dirty = true;
     }
     /**
      * Places the cache item into the cache
@@ -207,7 +228,20 @@ export class TrackerCache {
         this._cache = {};
     }
 
+    Save() {
+        var sv = [];
+        for(let key in this._cache) {
+            var item = this._cache[key];
+            if(!item.IsExpired) {
+                sv.push(item.Save());
+            }
+        }
+        this.dirty = false;
+        return sv;
+    }
+
     Load(data) {
+        console.log("Loading cache: ", data);
         for(var obj of data) {
             if(obj._kind === CACHE_KIND.YOUTUBE) {
                 this.Add(new YoutubeCacheItem(obj.id, obj.cachedAt, obj.t));
@@ -386,6 +420,7 @@ export const CACHE_KIND = {
 export const INTERNAL = {
     SET_STATE: "setState",
     GET_LATEST: "getLatest",
+    GET_TIMES: "getTimes",
     GOT_TIMES: "gotTimes",
     SEND_LATEST: "sendLatest",
     NAVIGATE_ID: "navigateId",
@@ -433,6 +468,23 @@ export const HELPERS = {
         } else {
             return `${pad(hours, 2)}:${pad(mins, 2)}:${pad(seconds, 2)}`;
         }
+    },
+    GetVideoId(url) {
+        url = url || window.location.href;
+        var startIndex = url.indexOf("?v=");
+        if(startIndex === -1)
+            return null;
+        var id = url.substring(startIndex + 3);
+    
+        var index = id.indexOf("&");
+        if(index !== -1) {
+            id = id.substring(0, index);
+        }
+        index = id.indexOf("#");
+        if(index !== -1) {
+            id = id.substring(0, index);
+        }
+        return id;
     }
 }
 
@@ -904,9 +956,14 @@ export class DeferredPromise {
 }
 
 // Helpers.
+
+
+
 function ObjectLength_Modern( object ) {
     return Object.keys(object).length;
 }
+
+
 
 function ObjectLength_Legacy( object ) {
     var length = 0;

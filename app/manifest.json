@@ -8,7 +8,8 @@
         "tabs",
         "webNavigation",
         "alarms",
-        "contextMenus"
+        "contextMenus",
+        "scripting"
     ],
     "manifest_version": 3,
     "action": {"default_title": "Video Tracker"},
@@ -34,12 +35,21 @@
         "service_worker": "worker.js",
         "type": "module"
     },
+    "host_permissions": [
+        "https://ml-api.uk.ms/tracker"
+    ],
     "web_accessible_resources": [
         {
           "resources": [ "scripts/youtube.js", "scripts/classes.js", "scripts/inject_yt.js" ],
           "matches": [
             "https://youtube.com/*",
             "https://*.youtube.com/*"
+            ]
+        },
+        {
+            "resources": ["scripts/inject_tab.js"],
+            "matches": [
+                "https://ml-api.uk.ms/*"
             ]
         }
       ]

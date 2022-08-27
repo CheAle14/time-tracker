@@ -1,13 +1,13 @@
 console.log("Loaded worker.");
-import {DeferredPromise, EXTERNAL, INTERNAL, InternalPacket, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
+import {DeferredPromise, EXTERNAL, getObjectLength, HELPERS, INTERNAL, InternalPacket, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
 
 // DONE: setup websocket connection 
 // DONE: setup popup page get information. (DONE, except for other tab info)
 // IGNORE: setup get queue. 
 // IGNORE: setup set queue. 
 // DONE: setup message passing for the above get and set stuff. 
+// DONE: blocklist video context menu
 
-// TODO: blocklist video context menu
 // TODO: reddit
 
 const API_VERSION = 2;
@@ -43,6 +43,7 @@ function setState(key, value) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    console.log(sender, message, reply);
     handleMessage(message, sender, (data) => {
         console.log(`[${id(sender)}] R>> `, data);
         reply(data);
@@ -52,16 +53,18 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     return true;
 });
 function id(_tab) {
-    return _tab.sender.tab ? _tab.sender.tab.id : 0;
+    if(_tab.tab) return id(_tab.tab);
+    if(_tab.sender) return id(_tab.sender);
+    return _tab.id ? _tab.id : 0;
 }
 function getName(_tab) {
     return _tab.sender.tab ? `${id(_tab)} @ ${_tab.sender.url}` : "popup @ " + _tab.sender.url;
 }
 chrome.runtime.onConnect.addListener(function(port) {
-    console.log("[CONNECT] ", port);
     port.id = id(port);
+    console.log("[CONNECT] ", port);
     port.name = getName(port);
-
+    PORTS[port.id] = port;
     port.onMessage.addListener((msg) => {
         handleMessage(msg, port, (data) => {
             console.log(`[${port.id}] >> `, data);
@@ -73,31 +76,81 @@ chrome.runtime.onConnect.addListener(function(port) {
         });
         return true;
     })
+    port.onDisconnect.addListener((d) => {
+        console.log(`[DISCONNECT] ${port.id}`);
+        delete PORTS[port.id];
+
+        if(getObjectLength(PORTS) === 0) {
+            console.log("All ports closed, closing WS if it exists");
+            if(WS) {
+                WS.close();
+                WS = null;
+            }
+        }
+
+    });
     init().then(() => {
         port.postMessage({type: "sendInfo", data: INFO});
         port.postMessage({type: "blocklist", data: BLOCKLIST});
     })
 });
 
-chrome.storage.onChanged.addListener(function (changes, namespace) {
-    for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
-        console.log(
-        `Storage key "${key}" in namespace "${namespace}" changed.`,
-        `Old value was "${oldValue}", new value is "${newValue}".`
-        );
-        if(key === "blocklist") {
-            BLOCKLIST = {};
-            for(var item of newValue) {
-                console.log(item);
-                BLOCKLIST[item] = true;
-            }
-        }
-    }
-  });
-
 chrome.action.onClicked.addListener(function() {
     chrome.tabs.create({url: 'popup.html'});
 });
+chrome.contextMenus.onClicked.addListener(async function(menu, tab) {  
+    await init();
+    console.log(menu, " ", tab);
+    console.log("exist: ", BLOCKLIST);
+    var vidUrl = menu.linkUrl || menu.pageUrl;
+    var id = HELPERS.GetVideoId(vidUrl);
+    var x = {};
+    if(BLOCKLIST[id]) {
+        console.log(`ID ${id} is already blacklisted, removing it`);
+        delete BLOCKLIST[id];
+        x[id] = false;
+    } else {
+        console.log(`Adding ${id} to blacklist`);
+        x[id] = true;
+        BLOCKLIST[id] = true;
+    }
+    await setState("blocklist", Object.keys(BLOCKLIST));
+    var resp = await fetchWs(new WebSocketPacket(EXTERNAL.UPDATE_IGNORED_VIDEOS, x));
+    var port = PORTS[tab.id];
+    console.log(port || PORTS);
+    port.postMessage({type: "alert", data: `Video ` + (x[id] ? "has been" : "is no longer") + " blacklisted"});
+});
+chrome.runtime.onInstalled.addListener(function() {
+    console.log("Installed!");
+    chrome.contextMenus.create({
+        contexts: ["page"],
+        documentUrlPatterns: ["https://*.youtube.com/watch*", "https://youtube.com/watch*"],
+        id: "blacklistVid",
+        title: "Toggle watching ignored"
+    }, function() {
+        if(chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError);
+        } else {
+            console.log("Registered page context menu option");
+        }
+    });
+    chrome.contextMenus.create({
+        contexts: ["video", "link"],
+        documentUrlPatterns: ["https://*.youtube.com/*", "https://youtube.com/*"],
+        targetUrlPatterns: ["https://*.youtube.com/watch*", "https://youtube.com/watch*"],
+        id: "blacklistLink",
+        title: "Toggle right clicked ignored"
+    }, function() {
+        if(chrome.runtime.lastError) {
+            console.error(chrome.runtime.lastError);
+        } else {
+            console.log("Registered video context menu option");
+        }
+    });
+    checkToken().then(() => {
+        console.log("Token checked.");
+    })
+})
 
 async function setToken(token) {
     var response = await fetch(`${CONFIG.api}/user`, {
@@ -124,19 +177,53 @@ var CACHE = null;
 var INFO = null;
 var CONFIG = null;
 var WS = null;
-var BLOCKLIST = {};
+var BLOCKLIST = null;
 var SEQUENCE = 1;
 var WS_CALLBACK = {};
+var PORTS = {};
 
 var WS_PROMISE = null;
 
+async function execScript(tab, fileName) {
+    if(chrome.scripting && chrome.scripting.executeScript) {
+        console.log("Executing using new scripting method");
+        return await chrome.scripting.executeScript({
+            files: [fileName],
+            target: {
+                tabId: tab.id
+            }
+        });
+    } else {
+        console.log("Executing script using old tabs method");
+        return await chrome.tabs.executeScript(tab.id, {
+            file: fileName
+        });
+    }
+}
+
+async function checkToken() {
+    await init();
+    if(!INFO.token && !INFO.warnedNoToken) {
+        INFO.warnedNoToken = true;
+        console.log("No token! Opening website to try and get one..");
+        chrome.tabs.create({
+            active: true,
+            url: CONFIG.api.replace("/api", "")
+        }, (tab) => {
+            console.log("Opened, injecting..");
+            execScript(tab, "scripts/inject_tab.js");
+        });
+        await setState("info", INFO);
+    }
+}
 
 async function init() {
     if(INFO === null) {
         INFO = await getState("info") || {
             token: null, 
             id: null,
-            name: null
+            name: null,
+            warnedNoToken: false
         };
     }
     if(CONFIG === null) {
@@ -161,20 +248,23 @@ async function init() {
         }
     }
     if(CACHE == null) {
-        var saved = await getState("cache") || {};
+        var saved = await getState("cache") || [];
         CACHE = new TrackerCache();
         CACHE.Load(saved);
+        CACHE.dirty = false; // we've just loaded it from storage, it can't be dirty.
         console.log("Loaded cache: ", CACHE);
     }
     if(WS == null) {
         console.logws = (...data) => {
             console.log("[WS] ", ...data);
         }
-        initWs();
+        if(INFO.token)
+            initWs();
     }
     if(BLOCKLIST == null) {
+        BLOCKLIST = {};
         var arr = await getState("blocklist") || [];
-        for(item in arr) {
+        for(var item of arr) {
             BLOCKLIST[item] = true;
         }
     }
@@ -190,6 +280,7 @@ function initWs() {
 async function sync() {
     await setState("info", INFO);
     await setState("config", CONFIG);
+    await setState("cache", CACHE.Save());
 }
 async function handleMessage(message, sender, reply) {
     console.log(id(sender), " << ", message);
@@ -244,6 +335,10 @@ async function getTimes(idArray) {
             result[id] = time;
         }
     }
+    console.log("CACHE: ", CACHE);
+    if(CACHE.dirty) {
+        await setState("cache", CACHE.Save());
+    }
     return result;
 }
 
@@ -261,7 +356,7 @@ async function wsMessage(event) {
     const packet = JSON.parse(event.data);
     console.logws("[<<] ", packet);
 
-    if(packet.res) {
+    if(packet.res !== undefined) {
         var prom = WS_CALLBACK[packet.res];
         if(prom) {
             prom.resolve(packet);
