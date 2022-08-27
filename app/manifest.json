@@ -36,7 +36,7 @@
         "type": "module"
     },
     "host_permissions": [
-        "https://ml-api.uk.ms/tracker"
+        "https://ml-api.uk.ms/*"
     ],
     "web_accessible_resources": [
         {

@@ -349,6 +349,10 @@ async function handleMessage(message, sender, reply) {
         var p = new InternalPacket("response", rep);
         p.res = message.seq;
         reply(p);
+    } else if(message.type === INTERNAL.NAVIGATE_ID) {
+        chrome.tabs.create({
+            url: `https://youtube.com/watch?v=${encodeURIComponent(message.data)}`
+        });
     }
 }
 
