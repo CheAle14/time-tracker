@@ -175,12 +175,15 @@ async function setToken(token) {
         }
     });
     if(!response.ok) {
+        INFO.name = null;
+        INFO.id = null;
         return false;
     }
     var j = await response.json();
     INFO.token = token;
     INFO.name = j.name;
     INFO.id = j.id;
+    INFO.warnedNoToken = false;
 
     await sync();
     return true;
@@ -202,7 +205,7 @@ var WS_PROMISE = null;
 
 async function execScript(tab, fileName) {
     if(chrome.scripting && chrome.scripting.executeScript) {
-        console.log("Executing using new scripting method");
+        console.log("Executing using new scripting method: ", tab);
         return await chrome.scripting.executeScript({
             files: [fileName],
             target: {
@@ -210,7 +213,7 @@ async function execScript(tab, fileName) {
             }
         });
     } else {
-        console.log("Executing script using old tabs method");
+        console.log("Executing script using old tabs method: ", tab);
         return await chrome.tabs.executeScript(tab.id, {
             file: fileName
         });
@@ -226,8 +229,17 @@ async function checkToken() {
             active: true,
             url: CONFIG.api.replace("/api", "")
         }, (tab) => {
-            console.log("Opened, injecting..");
-            execScript(tab, "scripts/inject_tab.js");
+            console.log("Opened, listening for load");
+            chrome.tabs.onUpdated.addListener(function cb(tabId, changeInfo, newTab)  {
+                if(tabId !== tab.id) return;
+                console.log(tabId, changeInfo, newTab);
+                if(newTab.url && newTab.status === "complete") {
+                    chrome.tabs.onUpdated.removeListener(cb);
+                    execScript(newTab, "scripts/inject_tab.js").then((r) => {
+                        console.log("Injection result: ", r);
+                    });
+                }
+            });
         });
         await setState("info", INFO);
     }
@@ -305,6 +317,7 @@ async function handleMessage(message, sender, reply) {
         return;
     } else if (message.type === "setToken") {
         var resp = await setToken(message.data);
+
         reply({type: "sendInfo", data: INFO});
         return;
     }
