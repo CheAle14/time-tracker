@@ -299,6 +299,13 @@ async function init() {
 }
 function initWs() {
     WS_PROMISE = new DeferredPromise(null);
+    if(WS) {
+        try{
+            WS.close();
+        } finally {
+            WS = null;
+        }
+    }
     WS = new WebSocket(`${CONFIG.ws}?api-key=${INFO.token}&v=${API_VERSION}`);
     WS.onopen = wsOpen;
     WS.onclose = wsClose;
@@ -431,6 +438,7 @@ async function wsOpen(event) {
 async function wsClose(event) {
     console.logws("[CLOSE] ", event);
     if(!WS_PROMISE.isResolved) WS_PROMISE.reject(event);
+    WS = null;
 }
 async function wsError(err) {
     console.logws("[ERR] ", err);
@@ -459,6 +467,12 @@ async function wsMessage(event) {
 
 async function fetchWs(packet) {
     packet.seq = SEQUENCE++;
+
+    if(!WS) {
+        console.log("WS is closed, starting reconnection before sending packet..");
+        await initWs();
+    }
+
     var retries = 0;
     while(retries < 3 && retries !== -1)  {
         try {
