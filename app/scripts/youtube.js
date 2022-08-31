@@ -1,7 +1,6 @@
 'use strict';
-import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength } from "./classes.js";
+import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, DeferredPromise } from "./classes.js";
 var port = null;
-var CONNECTED = true;
 const STATUS = new StateInfo();
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
@@ -45,7 +44,12 @@ var errorToast = new ConsistentToast({
     stopOnFocus: true, // Prevents dismissing of toast on hover
 });
 
-export function postMessage(packet, callback, failure) {
+function hasRecentTransmission() {
+    console.log("Last transmission: ", lastMessageSent, " diff: ", Date.now() - lastMessageSent);
+    return (Date.now() - lastMessageSent) > 60000;
+}
+
+async function postMessage(packet, callback, failure) {
     if(callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
@@ -56,26 +60,54 @@ export function postMessage(packet, callback, failure) {
         FAILS[packet.seq] = failure;
     }
     console.debug(`[PORT] >>`, packet);
+    if(!port) {
+        try {
+            port = await connectToExtension();
+        } catch(err) {
+            console.error(err);
+            STATUS.HALTED = true;
+            var vid = getVideo();
+            PRIOR_STATE = true;
+            if(vid) {
+                PRIOR_STATE = !vid.paused;
+            }
+            if(getVideo()) {
+                pause("Port disconnected");
+                vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
+            }
+            errorToast.setText("Disconnected from backend extension");
+            return;
+        }
+    }
+    lastMessageSent = Date.now();
     port.postMessage(packet);
 }
 
 var reconnect_timer = null;
+var reconnect_promise = null;
+var lastMessageSent = Date.now();
 
-function connectToExtension() {
-    if(port) {
-        console.log("Disconnecting from backend extension for a reconnect");
-        port.disconnect();
-        clearTimeout(reconnect_timer);
-        reconnect_timer = null;
+async function connectToExtension() {
+    reconnect_promise = new DeferredPromise();
+    try {
+        if(port) {
+            console.log("Disconnecting from backend extension for a reconnect");
+            port.disconnect();
+            clearTimeout(reconnect_timer);
+            reconnect_timer = null;
+        }
+        console.log("Connecting to backend");
+        port = chrome.runtime.connect();
+    
+        port.onMessage.addListener(portOnMessage);
+        port.onDisconnect.addListener(portOnDisconnect);
+        reconnect_timer = setTimeout(() => {
+            connectToExtension();
+        }, 295e3);
+    } catch(err) {
+        reconnect_promise.reject(err);
     }
-    console.log("Connecting to backend");
-    port = chrome.runtime.connect();
-
-    port.onMessage.addListener(portOnMessage);
-    port.onDisconnect.addListener(portOnDisconnect);
-    reconnect_timer = setTimeout(() => {
-        connectToExtension();
-    }, 295e3);
+    return reconnect_promise.promise;
 }
 
 function portOnMessage(message, sender, response) {
@@ -174,52 +206,28 @@ function portOnMessage(message, sender, response) {
             fl(message);
         }
     }
-    if(CONNECTED === false) {
-        // we were disconnected, but now we're back!
-        // this logic doesn't seem to work
-        // being disconnected also means we can't call chrome.runtime.connect()
-        // so i'm reloading the page instead.
-        CONNECTED = true;
-        STATUS.HALTED = false;
-        console.log("Reconnected!");
-        errorToast.hideToast();
-        if(PRIOR_STATE === true) {
-            console.log("Was previously playing, so attempting to play..");
-            play();
-        } else if(PRIOR_STATE === false) {
-            pause("Reconnected, previously paused, re-pausing");
-        } else {
-            console.log("There was no prior state??")
-        }
+    if(reconnect_promise) {
+        reconnect_promise.resolve(port);
     }
 };
 
-var reconnects = 0;
-function portOnDisconnect() {
-    if(CONNECTED) {
-        console.warn("Disconnected from backend extension");
-        reconnects = 0;
-        STATUS.HALTED = true;
-        CONNECTED = false;
-        var vid = getVideo();
-        PRIOR_STATE = true;
-        if(vid) {
-            PRIOR_STATE = !vid.paused;
-        }
-        if(getVideo()) {
-            pause("Port disconnected");
-            vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
-        }
-        errorToast.setText("Disconnected from backend extension");
-
-    } else {
-        reconnects = reconnects + 1;
-        errorToast.setText(`Reconnecting to backend, ${reconnects} attempts`);
+async function portOnDisconnect() {
+    console.log("Disconnected from backend extension");
+    port = null;
+    if(!reconnect_promise.isResolved) {
+        reconnect_promise.reject();
     }
-    /*setTimeout(function() {
-        //connectToExtension();
-        window.location.reload();
-    }, 1000);*/
+    if(hasRecentTransmission()) {
+        console.log("Attempting immediate reconnect due to recent transmission.");
+        var recon = setInterval(async () => {
+            try {
+                port = await connectToExtension();
+                clearInterval(recon);
+            } catch(err) {
+                console.error(err);
+            }
+        }, 1000);
+    }
 }
 
 connectToExtension();
@@ -779,19 +787,18 @@ function play() {
 function addVideoListeners() {
     var vid = getVideo();
     vid.onpause = function() {
-        console.log("Video play stopped; ", CONNECTED, STATUS);
+        console.log("Video play stopped; ", STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
             return;
-        if(CONNECTED)
-            saveTime();
+        saveTime();
         clearInterval(syncInterval);
         syncInterval = null;
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
-        console.log("Video play started; ", CONNECTED, STATUS);
+        console.log("Video play started; ", STATUS);
         if(STATUS.HALTED) {
             pause("Played, but HALTED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
@@ -809,11 +816,6 @@ function addVideoListeners() {
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }*/
-        if(CONNECTED === false) {
-            pause("Played, but not CONNECTED");
-            console.error("Cannot play video: not syncing");
-            return;
-        }
         if(syncInterval) {
             clearInterval(syncInterval);
         }
@@ -823,7 +825,7 @@ function addVideoListeners() {
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
-        console.log("Video play ended; ", CONNECTED, STATUS);
+        console.log("Video play ended; ", STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
