@@ -317,6 +317,11 @@ async function sync() {
     await setState("config", CONFIG);
     await setState("cache", CACHE.Save());
 }
+async function broadcastMessage(message) {
+    for (const [id, port] of Object.entries(PORTS)) {
+        port.postMessage(message);
+    }
+}
 async function handleMessage(message, sender, reply) {
     console.log(id(sender), " << ", message);
     await init();
@@ -431,7 +436,14 @@ async function getTimes(idArray) {
     }
     return result;
 }
-
+async function disconnectWs() {
+    try {
+        WS.disconnect();
+    } finally {
+        WS = null;
+        broadcastMessage(new InternalPacket("disconnected", {}));
+    }
+}
 async function wsOpen(event) {
     console.logws("[OPEN] ", event);
 }
@@ -444,6 +456,7 @@ async function wsError(err) {
     console.logws("[ERR] ", err);
 }
 async function wsMessage(event) {
+    timeouts = 0;
     const packet = JSON.parse(event.data);
     console.logws("[<<] ", packet);
 
@@ -465,8 +478,14 @@ async function wsMessage(event) {
     }
 }
 
+var timeouts = 0;
 async function fetchWs(packet) {
     packet.seq = SEQUENCE++;
+
+    if(timeouts > 3) {
+        console.log("Too many timeouts have occured on previous packets. We will attempt a reconnect..");
+        await disconnectWs();
+    }
 
     if(!WS) {
         console.log("WS is closed, starting reconnection before sending packet..");
@@ -485,7 +504,7 @@ async function fetchWs(packet) {
         }
     }
     if(retries > -1) {
-        throw new Error("Failed to send web socket packet.");
+        throw new Error("Failed to send web socket packet: could not open connection");
     }
 
     var prom = new DeferredPromise(30000) // timeout in ms
@@ -494,7 +513,18 @@ async function fetchWs(packet) {
     console.logws("[>>] ", packet);
     WS.send(JSON.stringify(packet));
 
-    return await prom.promise;
+    try {
+        var rtn = await prom.promise;
+        timeouts = 0;
+        return rtn;
+    } catch(err) {
+        if(err === "Timed out") {
+            timeouts += 1;
+
+
+            throw err;
+        }
+    }
 }
 
 
