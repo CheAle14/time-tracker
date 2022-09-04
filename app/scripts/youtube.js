@@ -49,7 +49,8 @@ function hasRecentTransmission() {
     return (Date.now() - lastMessageSent) > 60000;
 }
 
-async function postMessage(packet, callback, failure) {
+// This is exported so the content_yt.js file can call it.
+export async function postMessage(packet, callback, failure) {
     if(callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
@@ -554,6 +555,7 @@ function setElementThumbnail(element, data) {
 }
 
 var thumbnailBatch = 0;
+// This is exported so the content_yt.js file can call it.
 export function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
