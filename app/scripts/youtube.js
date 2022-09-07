@@ -376,18 +376,25 @@ function getChannelBadges() {
     if(IS_MOBILE) return [];
     var cont = getChannelName();
     if(cont == null) return null;
+    console.log("CHANNEL NAME: ", cont);
     var badgesCont = cont.getElementsByTagName("ytd-badge-supported-renderer")[0];
     var a = [];
     if(badgesCont) {
         if(badgesCont.children) {
             for(let child of badgesCont.children) {
+                if(!child.classList.contains("badge")) continue;
                 console.log(child);
                 var lbl = child.getAttribute("aria-label");
                 if(lbl) 
                     a.push(lbl);
             }
+        } else {
+            return null;
         }
+    } else {
+        return null;
     }
+    console.log("BADGES: ", a);
     return a;
 }
 
@@ -846,7 +853,7 @@ function boot() {
     if(WATCHING) {
         var length = getVideoLength();
         var playlist = isInPlaylist();
-        console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
+        console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist, "; badges: ", STATUS.BADGES);
 
         if(WATCHING in BLOCKLISTED_VIDEOS) {
             console.log("Video blacklisted, ignoring");
@@ -854,11 +861,8 @@ function boot() {
             return;
         }
 
-        var music = false;
         if(STATUS.BADGES === null) {
             STATUS.BADGES = getChannelBadges();
-        } else {
-            music = hasMusicBadge(STATUS.BADGES);
         }
 
 
@@ -866,7 +870,7 @@ function boot() {
         var ad = isAd();
         if(ad === true) {
             console.log("Video is an advertisement, attempting to skip and rechecking; fetching time in background");
-            if(STATUS.AD || music) {
+            if(STATUS.AD) {
                 // we've already sent one message, so just try and skip
                 skipAd();
             } else {
@@ -882,14 +886,15 @@ function boot() {
             setTimeout(boot, 100);
             return;
         }
-        if(music) {
-            console.log("Video is a music video, ignoring.");
-            STATUS.IGNORE();
-            return;
-        }
 
         if(STATUS.BADGES === null) {
             setTimeout(boot, 250);
+            return;
+        }
+        
+        if(hasMusicBadge(STATUS.BADGES)) {
+            console.log("Video is a music video, ignoring.");
+            STATUS.IGNORE();
             return;
         }
 
