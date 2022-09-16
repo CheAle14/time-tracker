@@ -220,6 +220,14 @@ async function execScript(tab, fileName) {
     }
 }
 
+async function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            resolve();
+        }, ms);
+    })
+}
+
 async function checkToken() {
     await init();
     if(!INFO.token && !INFO.warnedNoToken) {
@@ -438,7 +446,7 @@ async function getTimes(idArray) {
 }
 async function disconnectWs() {
     try {
-        WS.disconnect();
+        WS.close();
     } finally {
         WS = null;
         broadcastMessage(new InternalPacket("disconnected", {}));
@@ -500,6 +508,7 @@ async function fetchWs(packet) {
         } catch(err) {
             retries += 1;
             console.error(err);
+            await sleep(retries * 1000);
             initWs();
         }
     }
