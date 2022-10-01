@@ -509,13 +509,20 @@ function setElementThumbnail(element, data) {
     if(id in CACHE) {
         var time = CACHE[id];
         var perc = time / vidLength;
-        if(perc >= 0.9) {
-            ROOT.time("in-0.9");
+        const watchstate = getVideoWatchedStage(perc, vidLength - time);
+        if(watchstate === "watched") {
+            ROOT.time("in-watched");
             element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
             element.style.color = "green";
             element.style.backgroundColor = "white";
-            ROOT.timeEnd("in-0.9");
-        } else if(perc > 0) {
+            ROOT.timeEnd("in-watched");
+        } else if(watchstate === "nearly-watched") {
+            ROOT.time("in-nearly-watched");
+            element.innerText = `⌛ ${HELPERS.ToTime(vidLength - time)}`;
+            element.style.color = "orange";
+            element.style.backgroundColor = "blue";
+            ROOT.timeEnd("in-nearly-watched");
+        } else if(watchstate === "started") {
             ROOT.time("in-0");
             var remaining = vidLength - time;
             element.innerText = HELPERS.ToTime(remaining);
@@ -597,6 +604,17 @@ export function setThumbnails() {
     return mustFetch;
 }
 
+function getVideoWatchedStage(percentageWatched, timeRemainSeconds) {
+    if((percentageWatched >= 0.95 && timeRemainSeconds < 180) || timeRemainSeconds < 10) {
+        return "watched";
+    } else if(percentageWatched >= 0.9) {
+        return "nearly-watched";
+    } else if(percentageWatched > 0) {
+        return "started";
+    }
+    return "not-seen";
+}
+
 function setCurrentTimeCorrect() {
     console.log("Invoked setCurrentTimeCorrect");
     var vid = getVideo();
@@ -609,7 +627,8 @@ function setCurrentTimeCorrect() {
     if(videoTime) {
         var perc = cache / videoTime;
         console.log("Perc: ", perc);
-        if(perc >= 0.975) {
+        const watchstate = getVideoWatchedStage(perc, videoTime - cache);
+        if(watchstate === "watched") {
             console.log("Setting video time correct to 0, as rewatching.");
             cache = 0;
         }
