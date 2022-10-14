@@ -8,6 +8,7 @@ var FAILS = {};
 var SEQUENCE = 1;
 var BLOCKLISTED_VIDEOS = {};
 var THUMBNAIL_ELEMENTS = {};
+var THUMBNAIL_INTERVAL = null;
 
 const ROOT = new DebugTimer(/*log*/ false);
 
@@ -998,6 +999,8 @@ function videoSync() {
     saveTime();
     if(isWatchingFullScreen()) {
         clearToasts();
+        clearInterval(THUMBNAIL_INTERVAL);
+        THUMBNAIL_INTERVAL = null;
         return;
     }
 }
@@ -1034,7 +1037,12 @@ setInterval(function() {
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
         injectScript();
-        setTimeout(checkThumbnails, 1500);
+        if(THUMBNAIL_INTERVAL === null) {
+            setTimeout(checkThumbnails, 1500);
+            if(!IS_MOBILE) {
+                THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
+            }
+        }
     }
     var w = HELPERS.GetVideoId(currentUrl.href);
     if(WATCHING !== w) {
