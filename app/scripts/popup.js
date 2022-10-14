@@ -1,3 +1,5 @@
+console.log("Loaded popup.js");
+import {INTERNAL, InternalPacket, HELPERS} from "./classes.js"
 
 var text = document.getElementById("text");
 var inp = document.getElementById("tokenI");
@@ -22,7 +24,7 @@ port.onMessage.addListener(function(message, sender, response) {
         setTabs(message.data);
     } else if(message.type === INTERNAL.SEND_LATEST) {
         setLatest(message.data);
-    } else if(message.type == "provideBlacklist") {
+    } else if(message.type == "blocklist") {
         setBlacklist(message.data);
     }
 });
@@ -134,7 +136,4 @@ function navigateToPort(event) {
     postMessage(new InternalPacket("highlightTab", portId));
 }
 
-setInterval(function() {
-    port.postMessage({type: "getData"});
-}, 5000);
-port.postMessage({type: "getData"});
+postMessage({type: "getData"});

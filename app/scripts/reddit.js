@@ -1,4 +1,5 @@
 console.log("Reddit content script loaded!");
+import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, InternalPacket } from "./classes.js";
 
 var SEQUENCE = 1;
 var CALLBACKS = {};
@@ -56,10 +57,36 @@ const config = {
     'history': { },
     'history_expiration': 7, /* in days */
 };
-var port = chrome.runtime.connect();
-console.log("Connected to port");
+
+var port = null;
+function connectToExtension() {
+    if(port) {
+        console.log("Port already exists, attempting a disconnect");
+        try {
+            port.disconnect();
+        } finally {
+            port = null;
+        }
+    }
+    try {
+        port = chrome.runtime.connect();
+    } catch(err) {
+        console.log("Failed to connect to port background!");
+        console.error(err);
+        showError("Failed to connect to background.");
+        return;
+    }
+    console.log("Connected to port");
+    port.onMessage.addListener(portOnMessage);
+    port.onDisconnect.addListener(function() {
+        console.log("Disconnected from extension background, attempting to reconnect..");
+        setTimeout(connectToExtension, 1000);
+    })
+}
+connectToExtension();
+
 var errorToast = null;
-port.onMessage.addListener(function(message, sender, response) {
+function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
 
     if(message.res !== undefined) {
@@ -77,7 +104,7 @@ port.onMessage.addListener(function(message, sender, response) {
     if(message.type === "error") {
         showError(message.data);
     }
-});
+}
 
 function showError(text) {
     if(errorToast) {
@@ -96,10 +123,6 @@ function showError(text) {
     }
 }
 
-port.onDisconnect.addListener(function() {
-    console.log("Disconnected from extension background, reloading page!");
-    window.location.reload();
-})
 
 function find(arr, p) {
     for(var el of arr)
@@ -277,7 +300,7 @@ function addTimeSelectionBox(times) {
     var selectElem = document.createElement("select");
     selectElem.id = "mlapi-visits";
 
-    setSelected = false;
+    var setSelected = false;
     for(var time of times) {
         var opt = document.createElement("option");
         opt.value = time;
@@ -419,7 +442,7 @@ function generate_comment_style(comment_time, since) {
     let style = config.comment_style;
 
     style = style.replace(/\s+/g, ' ');
-    style = style.replace(/%color/g, this.get_color(Date.now() - comment_time, Date.now() - since));
+    style = style.replace(/%color/g, get_color(Date.now() - comment_time, Date.now() - since));
 
     return style;
 }

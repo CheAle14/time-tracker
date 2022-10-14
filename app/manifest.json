@@ -1,24 +1,25 @@
 {
     "name": "Video Time Tracker",
     "description": "Tracks the time watched of videos, synced across devices",
-    "version": "1.9.9",
+    "version": "2.0.1",
     "permissions": [
         "storage",
         "activeTab",
         "tabs",
         "webNavigation",
         "alarms",
-        "contextMenus"
+        "contextMenus",
+        "scripting"
     ],
-    "manifest_version": 2,
-    "browser_action": {"default_title": "Video Tracker", "default_popup": "popup.html"},
+    "manifest_version": 3,
+    "action": {"default_title": "Video Tracker"},
     "content_scripts": [
         {
             "matches": [
                 "https://youtube.com/*",
                 "https://*.youtube.com/*"
             ],
-            "js": ["toast/toast.js", "scripts/classes.js", "scripts/contentScript.js"],
+            "js": ["toast/toast.js", "scripts/content_yt.js"],
             "css": ["toast/toast.css"]
         },
         {
@@ -26,13 +27,37 @@
                 "https://reddit.com/*",
                 "https://*.reddit.com/*"
             ],
-            "js": ["tinycolor/tinycolor.js", "toast/toast.js", "scripts/classes.js", "scripts/reddit/reddit.js"],
+            "js": ["tinycolor/tinycolor.js", "toast/toast.js", "scripts/content_reddit.js"],
             "css": ["reddit.css", "toast/toast.css"]
         }
     ],
     "background": {
-        "scripts": [
-            "scripts/classes.js", "scripts/background.js"
-        ]
-    }
+        "service_worker": "worker.js",
+        "type": "module"
+    },
+    "host_permissions": [
+        "https://ml-api.uk.ms/*"
+    ],
+    "web_accessible_resources": [
+        {
+          "resources": [ "scripts/youtube.js", "scripts/classes.js", "scripts/inject_yt.js" ],
+          "matches": [
+            "https://youtube.com/*",
+            "https://*.youtube.com/*"
+            ]
+        },
+        {
+            "resources": [ "scripts/reddit.js", "scripts/classes.js", "scripts/inject_reddit.js" ],
+            "matches": [
+              "https://reddit.com/*",
+              "https://*.reddit.com/*"
+              ]
+          },
+        {
+            "resources": ["scripts/inject_tab.js"],
+            "matches": [
+                "https://ml-api.uk.ms/*"
+            ]
+        }
+      ]
 }

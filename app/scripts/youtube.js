@@ -1,12 +1,14 @@
-var port = chrome.runtime.connect();
-var CONNECTED = true;
+'use strict';
+import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, DeferredPromise } from "./classes.js";
+var port = null;
 const STATUS = new StateInfo();
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
 var CALLBACKS = {};
 var FAILS = {};
 var SEQUENCE = 1;
-var BLACKLISTED_VIDEOS = {};
+var BLOCKLISTED_VIDEOS = {};
 var THUMBNAIL_ELEMENTS = {};
+var THUMBNAIL_INTERVAL = null;
 
 const ROOT = new DebugTimer(/*log*/ false);
 
@@ -43,150 +45,13 @@ var errorToast = new ConsistentToast({
     stopOnFocus: true, // Prevents dismissing of toast on hover
 });
 
-const injectedScript ="(" +
-  function() {
-    console.log("Script Injected");
-
-
-    const extractFromGridRenderer = (gridRenderer) => {
-        console.log("Looking at ", gridRenderer);
-        var ids = [];
-        if(gridRenderer.videoId) {
-            ids.push(gridRenderer.videoId);
-        }
-        const items = gridRenderer.items;
-        if(items) {
-            for(let item of items) {
-                if(item.gridVideoRenderer) {
-                ids.push(item.gridVideoRenderer.videoId);
-                }
-            }
-        }
-        return ids;
-    };
-
-    const extractFromVideoWithContextRenderer = (vidR) => {
-        console.log("Looking at ", vidR);
-
-        return [vidR.videoId];
-    };
-
-    const extractIds = (js) => {
-        var ids = [];
-
-        const actions = js.onResponseReceivedActions;
-        if(!actions) return null;
-
-        const appendAction = actions[0];
-        if(!appendAction) return null;
-
-        const continuationActions = appendAction.appendContinuationItemsAction;
-        if(!continuationActions) return null;
-
-        const continuationItems = continuationActions.continuationItems;
-        console.log(continuationItems);
-        for(let continueItem of continuationItems) {
-            console.log("Section item: ", continueItem);
-
-            if(continueItem.gridVideoRenderer) {
-                var gridIds = extractFromGridRenderer(continueItem.gridVideoRenderer);
-                console.log("For section grid, found: ", gridIds);
-                ids = ids.concat(gridIds);
-            }
-
-            if(continueItem.richItemRenderer) {
-                if(continueItem.richItemRenderer.content) {
-                    if(continueItem.richItemRenderer.content.videoWithContextRenderer) {
-                        ids = ids.concat(extractFromVideoWithContextRenderer(continueItem.richItemRenderer.content.videoWithContextRenderer));
-                    }
-                }
-            }
-
-            const sectionRenderer = continueItem.itemSectionRenderer;
-            if(sectionRenderer) {
-                const sectionContents = sectionRenderer.contents;
-                for(let content of sectionContents) {
-                    if(content.shelfRenderer) {
-                        const gridRenderer = content.shelfRenderer.content.gridRenderer;
-                        ids = ids.concat(extractFromGridRenderer(gridRenderer));
-                    } else if(content.videoWithContextRenderer) {
-                        ids = ids.concat(extractFromVideoWithContextRenderer(content.videoWithContextRenderer))
-                    }
-                }
-            }
-        }
-
-        return ids;
-    };
-
-    // define monkey patch function
-    const monkeyPatch = () => {
-        // intercept requests to try and catch when a new batch of videos is requested
-        const {fetch: origFetch} = window;
-        window.fetch = async (...args) => {
-            const orig = await (await origFetch(...args));
-            const response = orig.clone();
-            if(response.url.indexOf("youtubei/v1/browse") >= 0) {
-                console.log("This is a browse request!");
-                response
-                  .json()
-                  .then(js => {
-                    console.log("Browse data: ", js);
-                    var ids = extractIds(js);
-                    const event = new CustomEvent("data", {detail: ids});
-                    console.log("Ids fetched: ", ids);
-                    if(ids) document.getElementById("injectHolder").dispatchEvent(event);
-
-                  })
-                  .catch(err => {
-                      console.error("Browse error: ", err);
-                  })
-            }
-            
-            /* the original response can be resolved unmodified: */
-            return orig;
-        };
-    };
-    monkeyPatch();
-  } + ")();";
-
-
-function injectScript() {
-    console.log("Injecting Script now");
-    var script = document.createElement("script");
-    script.textContent = injectedScript;
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
-
-    if(document.getElementById("injectHolder")) return;
-    const injectHolder = document.createElement("div");
-    injectHolder.setAttribute("id", "injectHolder");
-    document.body.appendChild(injectHolder);
-
-    injectHolder.addEventListener("data", function(e) {
-        console.log("Got data: ", e.detail);
-        postMessage({type: "getTimes", data: e.detail});
-        setTimeout(function() {
-            var mf = setThumbnails();
-            console.log("Inject found: ", mf);
-
-            var mustF = [];
-            for(let x of mf) {
-                if(e.detail.includes(x)) {
-                } else {
-                    mustF.push(x);
-                }
-            }
-            console.log("Inject must fetch additional: ", mustF);
-            postMessage({type: "getTimes", data: mustF});
-
-        }, 4000);
-    })
+function hasRecentTransmission() {
+    console.log("Last transmission: ", lastMessageSent, " diff: ", Date.now() - lastMessageSent);
+    return (Date.now() - lastMessageSent) > 60000;
 }
 
-
-
-function postMessage(packet, callback, failure) {
+// This is exported so the content_yt.js file can call it.
+export async function postMessage(packet, callback, failure) {
     if(callback) {
         packet.seq = SEQUENCE++;
         CALLBACKS[packet.seq] = callback;
@@ -197,20 +62,60 @@ function postMessage(packet, callback, failure) {
         FAILS[packet.seq] = failure;
     }
     console.debug(`[PORT] >>`, packet);
+    if(!port) {
+        try {
+            port = await connectToExtension();
+        } catch(err) {
+            console.error(err);
+            STATUS.HALTED = true;
+            var vid = getVideo();
+            PRIOR_STATE = true;
+            if(vid) {
+                PRIOR_STATE = !vid.paused;
+            }
+            if(getVideo()) {
+                pause("Port disconnected");
+                vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
+            }
+            errorToast.setText("Disconnected from backend extension");
+            return;
+        }
+    }
+    lastMessageSent = Date.now();
     port.postMessage(packet);
 }
 
-function connectToExtension() {
-    port = chrome.runtime.connect();
+var reconnect_timer = null;
+var reconnect_promise = null;
+var lastMessageSent = Date.now();
 
-    port.onMessage.addListener(portOnMessage);
-    port.onDisconnect.addListener(portOnDisconnect);
+async function connectToExtension() {
+    reconnect_promise = new DeferredPromise();
+    try {
+        if(port) {
+            console.log("Disconnecting from backend extension for a reconnect");
+            port.disconnect();
+            clearTimeout(reconnect_timer);
+            reconnect_timer = null;
+        }
+        console.log("Connecting to backend");
+        port = chrome.runtime.connect();
+    
+        port.onMessage.addListener(portOnMessage);
+        port.onDisconnect.addListener(portOnDisconnect);
+        reconnect_timer = setTimeout(() => {
+            connectToExtension();
+        }, 295e3);
+    } catch(err) {
+        reconnect_promise.reject(err);
+    }
+    return reconnect_promise.promise;
 }
 
 function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
-    if(message.type === "blacklists") {
-        BLACKLISTED_VIDEOS = message.data;
+    if(message.type === "blocklist") {
+        BLOCKLISTED_VIDEOS = message.data;
     } else if(message.type === "gotTimes") {
         for(let a in message.data) {
             CACHE[a] = message.data[a];
@@ -303,52 +208,28 @@ function portOnMessage(message, sender, response) {
             fl(message);
         }
     }
-    if(CONNECTED === false) {
-        // we were disconnected, but now we're back!
-        // this logic doesn't seem to work
-        // being disconnected also means we can't call chrome.runtime.connect()
-        // so i'm reloading the page instead.
-        CONNECTED = true;
-        STATUS.HALTED = false;
-        console.log("Reconnected!");
-        errorToast.hideToast();
-        if(PRIOR_STATE === true) {
-            console.log("Was previously playing, so attempting to play..");
-            play();
-        } else if(PRIOR_STATE === false) {
-            pause("Reconnected, previously paused, re-pausing");
-        } else {
-            console.log("There was no prior state??")
-        }
+    if(reconnect_promise) {
+        reconnect_promise.resolve(port);
     }
 };
 
-var reconnects = 0;
-function portOnDisconnect() {
-    if(CONNECTED) {
-        console.warn("Disconnected from backend extension");
-        reconnects = 0;
-        STATUS.HALTED = true;
-        CONNECTED = false;
-        var vid = getVideo();
-        PRIOR_STATE = true;
-        if(vid) {
-            PRIOR_STATE = !vid.paused;
-        }
-        if(getVideo()) {
-            pause("Port disconnected");
-            vidToolTip.Error = new VideoToolTipFlavour("Disconnected", {color: "red"}, -1);
-        }
-        errorToast.setText("Disconnected from backend extension");
-
-    } else {
-        reconnects = reconnects + 1;
-        errorToast.setText(`Reconnecting to backend, ${reconnects} attempts`);
+async function portOnDisconnect() {
+    console.log("Disconnected from backend extension");
+    port = null;
+    if(!reconnect_promise.isResolved) {
+        reconnect_promise.reject();
     }
-    /*setTimeout(function() {
-        //connectToExtension();
-        window.location.reload();
-    }, 1000);*/
+    if(hasRecentTransmission()) {
+        console.log("Attempting immediate reconnect due to recent transmission.");
+        var recon = setInterval(async () => {
+            try {
+                port = await connectToExtension();
+                clearInterval(recon);
+            } catch(err) {
+                console.error(err);
+            }
+        }, 1000);
+    }
 }
 
 connectToExtension();
@@ -402,23 +283,7 @@ function getVideoTxt() {
     return txt;
 }
 
-function getId(url) {
-    url = url || window.location.href;
-    var startIndex = url.indexOf("?v=");
-    if(startIndex === -1)
-        return null;
-    var id = url.substring(startIndex + 3);
 
-    var index = id.indexOf("&");
-    if(index !== -1) {
-        id = id.substring(0, index);
-    }
-    index = id.indexOf("#");
-    if(index !== -1) {
-        id = id.substring(0, index);
-    }
-    return id;
-}
 
 function pad(value, length) {
     var s = value.toString();
@@ -471,7 +336,7 @@ function getVideo() {
 
 function isInPlaylist() {
     if(IS_MOBILE) {
-        doc = document.getElementsByTagName("ytm-playlist")[0];
+        var doc = document.getElementsByTagName("ytm-playlist")[0];
         return !!doc;
     } else {
         const urlSearchParams = new URLSearchParams(window.location.search);
@@ -512,18 +377,25 @@ function getChannelBadges() {
     if(IS_MOBILE) return [];
     var cont = getChannelName();
     if(cont == null) return null;
+    console.log("CHANNEL NAME: ", cont);
     var badgesCont = cont.getElementsByTagName("ytd-badge-supported-renderer")[0];
     var a = [];
     if(badgesCont) {
         if(badgesCont.children) {
             for(let child of badgesCont.children) {
+                if(!child.classList.contains("badge")) continue;
                 console.log(child);
                 var lbl = child.getAttribute("aria-label");
                 if(lbl) 
                     a.push(lbl);
             }
+        } else {
+            return null;
         }
+    } else {
+        return null;
     }
+    console.log("BADGES: ", a);
     return a;
 }
 
@@ -571,7 +443,7 @@ function setElementThumbnail(element, data) {
         return "hidden";
     }
     var anchor = element.parentElement.parentElement.parentElement;
-    var id = getId(anchor.href);
+    var id = HELPERS.GetVideoId(anchor.href);
     data.id = id;
     if(!id) {
         console.log("Could not get ID:", element);
@@ -634,17 +506,24 @@ function setElementThumbnail(element, data) {
     //    element.setAttribute("mlapi-vid-length", parseToSeconds(vidLength));
     //}dd
     ROOT.push("set");
-    rtn = "undefined";
+    var rtn = "undefined";
     if(id in CACHE) {
         var time = CACHE[id];
         var perc = time / vidLength;
-        if(perc >= 0.9) {
-            ROOT.time("in-0.9");
+        const watchstate = getVideoWatchedStage(perc, vidLength - time);
+        if(watchstate === "watched") {
+            ROOT.time("in-watched");
             element.innerText = `✔️ ${HELPERS.ToTime(vidLength)}`;
             element.style.color = "green";
             element.style.backgroundColor = "white";
-            ROOT.timeEnd("in-0.9");
-        } else if(perc > 0) {
+            ROOT.timeEnd("in-watched");
+        } else if(watchstate === "nearly-watched") {
+            ROOT.time("in-nearly-watched");
+            element.innerText = `⌛ ${HELPERS.ToTime(vidLength - time)}`;
+            element.style.color = "orange";
+            element.style.backgroundColor = "blue";
+            ROOT.timeEnd("in-nearly-watched");
+        } else if(watchstate === "started") {
             ROOT.time("in-0");
             var remaining = vidLength - time;
             element.innerText = HELPERS.ToTime(remaining);
@@ -691,7 +570,8 @@ function setElementThumbnail(element, data) {
 }
 
 var thumbnailBatch = 0;
-function setThumbnails() {
+// This is exported so the content_yt.js file can call it.
+export function setThumbnails() {
     //console.log(CACHE);
     var mustFetch = []
     var thumbNails = getThumbnails();
@@ -725,6 +605,17 @@ function setThumbnails() {
     return mustFetch;
 }
 
+function getVideoWatchedStage(percentageWatched, timeRemainSeconds) {
+    if((percentageWatched >= 0.95 && timeRemainSeconds < 180) || timeRemainSeconds < 10) {
+        return "watched";
+    } else if(percentageWatched >= 0.9) {
+        return "nearly-watched";
+    } else if(percentageWatched > 0) {
+        return "started";
+    }
+    return "not-seen";
+}
+
 function setCurrentTimeCorrect() {
     console.log("Invoked setCurrentTimeCorrect");
     var vid = getVideo();
@@ -737,7 +628,8 @@ function setCurrentTimeCorrect() {
     if(videoTime) {
         var perc = cache / videoTime;
         console.log("Perc: ", perc);
-        if(perc >= 0.975) {
+        const watchstate = getVideoWatchedStage(perc, videoTime - cache);
+        if(watchstate === "watched") {
             console.log("Setting video time correct to 0, as rewatching.");
             cache = 0;
         }
@@ -924,18 +816,18 @@ function play() {
 function addVideoListeners() {
     var vid = getVideo();
     vid.onpause = function() {
-        console.log("Video play stopped; ", CONNECTED, STATUS);
+        console.log("Video play stopped; ", STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
             return;
-        if(CONNECTED)
-            saveTime();
-        clearInterval(videoSync);
+        saveTime();
+        clearInterval(syncInterval);
+        syncInterval = null;
         vidToolTip.Paused = true;
     };
     vid.onplay = function() {
-        console.log("Video play started; ", CONNECTED, STATUS);
+        console.log("Video play started; ", STATUS);
         if(STATUS.HALTED) {
             pause("Played, but HALTED");
             getVideo().currentTime = CACHE[WATCHING] || 0;
@@ -953,48 +845,44 @@ function addVideoListeners() {
             getVideo().currentTime = CACHE[WATCHING] || 0;
             return;
         }*/
-        if(CONNECTED === false) {
-            pause("Played, but not CONNECTED");
-            console.error("Cannot play video: not syncing");
-            return;
+        if(syncInterval) {
+            clearInterval(syncInterval);
         }
-        setInterval(videoSync, 5000);
+        syncInterval = setInterval(videoSync, 15000);
         vidToolTip.Paused = false;
         vidToolTip.Ended = false;
         flavRemoveSave.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Sync started", {color: "green"}, -1)));
     };
     vid.onended = function() {
-        console.log("Video play ended; ", CONNECTED, STATUS);
+        console.log("Video play ended; ", STATUS);
         if(STATUS.HALTED)
             return;
         if(STATUS.SYNC == false)
             return;
         saveTime();
-        clearInterval(videoSync);
+        clearInterval(syncInterval);
+        syncInterval = null;
         vidToolTip.Ended = true;
     }
     vid.setAttribute("mlapi-events", "true")
 }
 
 function boot() {
-    WATCHING = getId();
+    WATCHING = HELPERS.GetVideoId(window.location.href);
     thumbnailBatch = 0;
     if(WATCHING) {
         var length = getVideoLength();
         var playlist = isInPlaylist();
-        console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist);
+        console.log(`Loaded watching ${WATCHING} of duration `, length, "; playlist: ", playlist, "; badges: ", STATUS.BADGES);
 
-        if(WATCHING in BLACKLISTED_VIDEOS) {
+        if(WATCHING in BLOCKLISTED_VIDEOS) {
             console.log("Video blacklisted, ignoring");
             STATUS.IGNORE();
             return;
         }
 
-        var music = false;
         if(STATUS.BADGES === null) {
             STATUS.BADGES = getChannelBadges();
-        } else {
-            music = hasMusicBadge(STATUS.BADGES);
         }
 
 
@@ -1002,7 +890,7 @@ function boot() {
         var ad = isAd();
         if(ad === true) {
             console.log("Video is an advertisement, attempting to skip and rechecking; fetching time in background");
-            if(STATUS.AD || music) {
+            if(STATUS.AD) {
                 // we've already sent one message, so just try and skip
                 skipAd();
             } else {
@@ -1018,14 +906,15 @@ function boot() {
             setTimeout(boot, 100);
             return;
         }
-        if(music) {
-            console.log("Video is a music video, ignoring.");
-            STATUS.IGNORE();
-            return;
-        }
 
         if(STATUS.BADGES === null) {
             setTimeout(boot, 250);
+            return;
+        }
+        
+        if(hasMusicBadge(STATUS.BADGES)) {
+            console.log("Video is a music video, ignoring.");
+            STATUS.IGNORE();
             return;
         }
 
@@ -1089,18 +978,19 @@ function saveTime() {
         console.log("Not saving time: not loaded");
         return;
     }
-    navigateToPort = {};
     var time = getVideo().currentTime;
     if(time < 10) {
         console.log("Not saving time: too close to start");
         return;
     }
-    navigateToPort[WATCHING] = time;
+    var sv = {};
+    sv[WATCHING] = time;
     CACHE[WATCHING] = time;
-    postMessage({type: "setTime", data: navigateToPort});
+    postMessage({type: "setTime", data: sv});
     setQueryTime(time);
 }
 
+var syncInterval = null;
 function videoSync() {
     if(getVideo().paused || STATUS.HALTED)
         return;
@@ -1109,6 +999,8 @@ function videoSync() {
     saveTime();
     if(isWatchingFullScreen()) {
         clearToasts();
+        clearInterval(THUMBNAIL_INTERVAL);
+        THUMBNAIL_INTERVAL = null;
         return;
     }
 }
@@ -1145,9 +1037,14 @@ setInterval(function() {
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
         injectScript();
-        setTimeout(checkThumbnails, 1500);
+        if(THUMBNAIL_INTERVAL === null) {
+            setTimeout(checkThumbnails, 1500);
+            if(!IS_MOBILE) {
+                THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
+            }
+        }
     }
-    var w = getId(currentUrl.href);
+    var w = HELPERS.GetVideoId(currentUrl.href);
     if(WATCHING !== w) {
         delete CACHE[w];
         WATCHING = w;

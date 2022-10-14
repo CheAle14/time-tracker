@@ -2,7 +2,7 @@
 /**
  * Packets sent internally via chrome.runtime and ports.
  */ 
-class InternalPacket {
+export class InternalPacket {
     /**
      * Gets an internal packet of the given type
      * @param {INTERNAL} type 
@@ -17,7 +17,7 @@ class InternalPacket {
 /**
  * Internal packet to indicate state of video play
  */
-class StatePacket extends InternalPacket {
+export class StatePacket extends InternalPacket {
     /**
      * 
      * @param {boolean} playing Whether the video should play or be paused
@@ -45,7 +45,7 @@ class StatePacket extends InternalPacket {
 /**
  * Represents an error sent to failure callback when a packet to the websocket fails to get a response.  
  */
-class NoResponsePacket extends InternalPacket {
+export class NoResponsePacket extends InternalPacket {
     constructor(reason) {
         super(INTERNAL.NO_RESPONSE, {
             reason: reason
@@ -74,7 +74,7 @@ class NoResponsePacket extends InternalPacket {
 /**
  * Packets sent to or from websocket connection
  */
- class WebSocketPacket {
+ export class WebSocketPacket {
     /**
      * Creates a packet to be sent over the websocket with provided information
      * @param {EXTERNAL} id 
@@ -91,7 +91,7 @@ class NoResponsePacket extends InternalPacket {
 /**
  * An item stored in cache
  */
-class CacheItem {
+export class CacheItem {
     /**
      * 
      * @param {CACHE_KIND} kind 
@@ -129,16 +129,29 @@ class CacheItem {
         var expiresAt = new Date(this.cachedAt.getTime() + (this.ttl * 1000));
         return Date.now() > expiresAt;
     }
+
+    Save() {
+        return {
+            _kind: this._kind,
+            id: this.id,
+            cachedAt: this.cachedAt.getTime()
+        };
+    }
 }
 
-class YoutubeCacheItem extends CacheItem {
+export class YoutubeCacheItem extends CacheItem {
     constructor(id, cachedAt, vidTime) {
         super(CACHE_KIND.YOUTUBE, id, cachedAt);
         this.t = vidTime;
     }
+    Save() {
+        var d = super.Save();
+        d.t = this.t;
+        return d;
+    }
 }
 
-class RedditCacheItem extends CacheItem {
+export class RedditCacheItem extends CacheItem {
     constructor(id, cachedAt, visitedAt, count) {
         super(CACHE_KIND.REDDIT, id, cachedAt);
         this.count = count;
@@ -149,11 +162,18 @@ class RedditCacheItem extends CacheItem {
     get Visits() {
         return this.visits;
     }
+    Save() {
+        var d = super.Save();
+        d.count = this.count;
+        d.visits = this.visits;
+        return d;
+    }
 }
 
-class TrackerCache {
+export class TrackerCache {
     constructor() {
         this._cache = {};
+        this.dirty = false;
     }
 
     /**
@@ -164,6 +184,7 @@ class TrackerCache {
         item.cachedAt = new Date();
         console.debug(`[CACHE] Inserted ${item.id} into cache at ${Date.now()}`);
         this._cache[item.id] = item;
+        this.dirty = true;
     }
     /**
      * Places the cache item into the cache
@@ -206,9 +227,32 @@ class TrackerCache {
         console.debug("[CACHE] Cleared cache.");
         this._cache = {};
     }
+
+    Save() {
+        var sv = [];
+        for(let key in this._cache) {
+            var item = this._cache[key];
+            if(!item.IsExpired) {
+                sv.push(item.Save());
+            }
+        }
+        this.dirty = false;
+        return sv;
+    }
+
+    Load(data) {
+        console.log("Loading cache: ", data);
+        for(var obj of data) {
+            if(obj._kind === CACHE_KIND.YOUTUBE) {
+                this.Add(new YoutubeCacheItem(obj.id, obj.cachedAt, obj.t));
+            } else {
+                this.Add(new RedditCacheItem(obj.id, obj.cachedAt, obj.visits, obj.count))
+            }
+        }
+    }
 }
 
-class WebSocketQueue {
+export class WebSocketQueue {
     constructor() {
         this._queue = [];
         this._waiting = 0;
@@ -364,7 +408,7 @@ class WebSocketQueue {
     }
 }
 
-const CACHE_KIND = {
+export const CACHE_KIND = {
     YOUTUBE: "video",
     REDDIT: "reddit"
 }
@@ -373,9 +417,10 @@ const CACHE_KIND = {
 /**
  * Types for packets sent internally, between background and content scripts.
  */
-const INTERNAL = {
+export const INTERNAL = {
     SET_STATE: "setState",
     GET_LATEST: "getLatest",
+    GET_TIMES: "getTimes",
     GOT_TIMES: "gotTimes",
     SEND_LATEST: "sendLatest",
     NAVIGATE_ID: "navigateId",
@@ -390,7 +435,7 @@ const INTERNAL = {
 /**
  * Ids for packets sent from background to websocket.
  */
-const EXTERNAL = {
+export const EXTERNAL = {
     UPDATE_IGNORED_VIDEOS: "UpdateIgnored",
     VISITED_THREAD: "VisitedThread",
     GET_THREADS: "GetThreads",
@@ -400,8 +445,14 @@ const EXTERNAL = {
     GET_VERSION: "GetVersion"
 }
 
+export function pad(n, width, z) {
+    z = z || '0';
+    n = n + '';
+    return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+}
 
-const HELPERS = {
+
+export const HELPERS = {
     /**
      * Returns the formatted representation of the time in seconds (eg, hh:mm:ss or mm:ss if below an hour)
      * @param {number} diff Time in seconds
@@ -417,10 +468,27 @@ const HELPERS = {
         } else {
             return `${pad(hours, 2)}:${pad(mins, 2)}:${pad(seconds, 2)}`;
         }
+    },
+    GetVideoId(url) {
+        url = url || window.location.href;
+        var startIndex = url.indexOf("?v=");
+        if(startIndex === -1)
+            return null;
+        var id = url.substring(startIndex + 3);
+    
+        var index = id.indexOf("&");
+        if(index !== -1) {
+            id = id.substring(0, index);
+        }
+        index = id.indexOf("#");
+        if(index !== -1) {
+            id = id.substring(0, index);
+        }
+        return id;
     }
 }
 
-class VideoToolTipFlavour {
+export class VideoToolTipFlavour {
     constructor(text, style, duration) {
         this.text = text;
         this.style = style;
@@ -443,7 +511,7 @@ class VideoToolTipFlavour {
     }
 }
 
-class VideoToolTip {
+export class VideoToolTip {
     defaultStyle() {
         return {};
     }
@@ -623,7 +691,7 @@ class VideoToolTip {
     }
 }
 
-class ConsistentToast {
+export class ConsistentToast {
     constructor(config) {
         this.config = config;
         this.toast = null;
@@ -648,7 +716,7 @@ class ConsistentToast {
     }
 }
 
-class StateInfo {
+export class StateInfo {
     constructor() {
         this.reset();
     }
@@ -738,7 +806,7 @@ class StateInfo {
 
 }
 
-class BatchUpdater {
+export class BatchUpdater {
     constructor(period) {
         this.lastUpdate = null;
         this.oldestUpdate = null;
@@ -764,7 +832,7 @@ class BatchUpdater {
         }
     }
 }
-class BatchGetUpdater extends BatchUpdater {
+export class BatchGetUpdater extends BatchUpdater {
     constructor(period) {
         super(period);
         this.data = [];
@@ -786,7 +854,7 @@ class BatchGetUpdater extends BatchUpdater {
         this.data = [];
     }
 }
-class BatchSetUpdater extends BatchUpdater {
+export class BatchSetUpdater extends BatchUpdater {
     constructor(period) {
         super(period);
         this.data = {};
@@ -818,7 +886,7 @@ class BatchSetUpdater extends BatchUpdater {
     }
 }
 
-class DebugTimer {
+export class DebugTimer {
     /**
      * 
      * @param {Boolean} log 
@@ -861,10 +929,41 @@ class DebugTimer {
     }
 }
 
+export class DeferredPromise {
+    constructor(timeout) {
+        this.isResolved = false;
+        this.isRejected = false;
+        this.promise = new Promise((resolve, reject)=> {
+            this.reject = (reason) => {
+                this.isRejected = true;
+                console.log("Rejecting deferred promise ", reason);
+                reject(reason);
+            };
+            this.resolve = (reason) => {
+                console.log("Resolving deferring promise ", reason);
+                this.isResolved = true;
+                clearTimeout(this.tm);
+                resolve(reason);
+            };
+            if(timeout) {
+                this.tm = setTimeout(() => {
+                    if(!this.isResolved)
+                        this.reject("Timed out");
+                }, timeout)
+            }
+        })
+    }
+}
+
 // Helpers.
+
+
+
 function ObjectLength_Modern( object ) {
     return Object.keys(object).length;
 }
+
+
 
 function ObjectLength_Legacy( object ) {
     var length = 0;
@@ -876,5 +975,5 @@ function ObjectLength_Legacy( object ) {
     return length;
 }
 
-var getObjectLength =
+export var getObjectLength =
     Object.keys ? ObjectLength_Modern : ObjectLength_Legacy;
