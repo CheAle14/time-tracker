@@ -442,7 +442,10 @@ function setElementThumbnail(element, data) {
         ROOT.timeEnd();
         return "hidden";
     }
-    var anchor = element.parentElement.parentElement.parentElement;
+    var anchor = null;
+    while(anchor === null || anchor.tagName !== "A") {
+        anchor = (anchor || element).parentElement;
+    }
     var id = HELPERS.GetVideoId(anchor.href);
     data.id = id;
     if(!id) {
