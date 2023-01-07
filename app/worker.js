@@ -267,11 +267,11 @@ async function init() {
             api: null 
         };
         var dirty = false;
-        if(!CONFIG.api) {
+        if(!CONFIG.api || CONFIG.api.indexOf('ml-api.uk.ms') >= 0) {
             CONFIG.api = "https://mlapi.cheale14.com/api/tracker";
             dirty = true;
         }
-        if(!CONFIG.ws) {
+        if(!CONFIG.ws || CONFIG.ws.indexOf('ml-api.uk.ms') >= 0) {
             if(CONFIG.api.startsWith("https://")) {
                 CONFIG.ws = "wss://mlapi.cheale14.com/wss/time-tracker"
             } else {
@@ -279,6 +279,7 @@ async function init() {
             }
             dirty = true;
         }
+
         if(dirty) {
             await setState("config", CONFIG);
         }
