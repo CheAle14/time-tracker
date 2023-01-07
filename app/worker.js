@@ -268,12 +268,12 @@ async function init() {
         };
         var dirty = false;
         if(!CONFIG.api) {
-            CONFIG.api = "https://ml-api.uk.ms/api/tracker";
+            CONFIG.api = "https://mlapi.cheale14.com/api/tracker";
             dirty = true;
         }
         if(!CONFIG.ws) {
             if(CONFIG.api.startsWith("https://")) {
-                CONFIG.ws = "wss://ml-api.uk.ms/time-tracker"
+                CONFIG.ws = "wss://mlapi.cheale14.com/wss/time-tracker"
             } else {
                 CONFIG.ws = "ws://localhost:4650/time-tracker"
             }

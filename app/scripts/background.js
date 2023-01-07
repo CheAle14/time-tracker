@@ -90,7 +90,7 @@ var INFO = defaultInfo();
 var PORTS = {};
 var PORTS_WATCHING = {};
 const DEBUG = false;
-const URL =  DEBUG ? "http://localhost:8887/api/tracker" : "https://ml-api.uk.ms/api/tracker";
+const URL =  DEBUG ? "http://localhost:8887/api/tracker" : "https://mlapi.cheale14.com/api/tracker";
 const CACHE = new TrackerCache();
 const BLACKLISTED_VIDEOS = {};
 const API_VERSION = 2;
@@ -525,7 +525,7 @@ function wsInterval() {
 function startWs() {
     var url = null;
     if(URL.startsWith("https")) {
-        url = "wss://ml-api.uk.ms/time-tracker"
+        url = "wss://mlapi.cheale14.com/wss/time-tracker"
     } else {
         url = "ws://localhost:4650/time-tracker"
     }

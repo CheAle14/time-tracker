@@ -36,7 +36,7 @@
         "type": "module"
     },
     "host_permissions": [
-        "https://ml-api.uk.ms/*"
+        "https://mlapi.cheale14.com/*"
     ],
     "web_accessible_resources": [
         {
@@ -56,7 +56,7 @@
         {
             "resources": ["scripts/inject_tab.js"],
             "matches": [
-                "https://ml-api.uk.ms/*"
+                "https://mlapi.cheale14.com/*"
             ]
         }
       ]
