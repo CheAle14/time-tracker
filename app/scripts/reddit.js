@@ -594,7 +594,7 @@ getInfos();
 
 // Listen for us commenting
 var registered = new WeakSet();
-const DOMAIN_REGEX = /(?<domain>.+)\.(?<tld>gd|com|org|net|gg|dev)/
+const DOMAIN_REGEX = /^(?<domain>\S+)\.(?<tld>gd|com|org|net|gg|dev)/
 
 const loopInterval = setInterval(function() {
     var svBtns = document.getElementsByClassName("save");
@@ -647,7 +647,11 @@ const loopInterval = setInterval(function() {
                         var mtch = innerText.match(DOMAIN_REGEX);
                         console.log("Match: ", mtch);
                         if(mtch) {
-                            var uri = `(https://${innerText})`;
+                            var uri = null;
+                            if(innerText.startsWith("http"))
+                                uri = `(${innerText})`;
+                            else
+                                uri = `(https://${innerText})`;
                             textarea.value += uri;
                             event.preventDefault();
                         }
