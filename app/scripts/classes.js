@@ -11,6 +11,7 @@ export class InternalPacket {
     constructor(type, data) {
         this.type = type;
         this.data = data;
+        this.error = undefined;
     }
 }
 
@@ -50,6 +51,7 @@ export class NoResponsePacket extends InternalPacket {
         super(INTERNAL.NO_RESPONSE, {
             reason: reason
         });
+        this.error = true;
     }
     /**
      * Whether the packet was generated because the WS was disconnected when 
@@ -85,6 +87,19 @@ export class NoResponsePacket extends InternalPacket {
         this.id = id;
         this.content = content;
         this.seq = sequence || 1;
+    }
+}
+
+/**
+ * An internal packet that needs to interact with the WS, but its closed.
+ * Deferred till it can be reopened
+ */
+export class DeferredInternalRequest {
+    constructor(message, sender, reply) {
+        this.message = message;
+        this.sender = sender;
+        this.reply = reply;
+        this.sent = Date.now();
     }
 }
 
@@ -429,7 +444,8 @@ export const INTERNAL = {
     SEND_REDDIT_COUNT: "sendRedditCount",
     REDDIT_VISITED: "redditVisited",
     IGNORED_VIDEO: "ignoredVideo",
-    NO_RESPONSE: "noResponse"
+    NO_RESPONSE: "noResponse",
+    SET_WATCHING: "setWatching"
 }
 
 /**
@@ -471,6 +487,7 @@ export const HELPERS = {
     },
     GetVideoId(url) {
         url = url || window.location.href;
+        if(url.indexOf("/shorts/") >= 0) return null;
         var startIndex = url.indexOf("?v=");
         if(startIndex === -1)
             return null;

@@ -1,5 +1,5 @@
 'use strict';
-import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, DeferredPromise } from "./classes.js";
+import { StateInfo, DebugTimer, VideoToolTip, ConsistentToast, StatePacket, VideoToolTipFlavour, INTERNAL, EXTERNAL, HELPERS, getObjectLength, DeferredPromise, NoResponsePacket } from "./classes.js";
 var port = null;
 const STATUS = new StateInfo();
 var PRIOR_STATE = null; // whether the video was playing when we disconnected
@@ -191,21 +191,24 @@ function portOnMessage(message, sender, response) {
         alert(message.data);
     }
     if(message.res) {
-        var cb = CALLBACKS[message.res]
-        if(cb) {
-            delete CALLBACKS[message.res]
-            console.log(`[PORT] Invoking callback handler for ${message.res}`);
-            cb(message);
-        }
-
         var fl = FAILS[message.res];
         if(fl) {
             delete FAILS[message.res];
-            console.log(`[PORT] Invoking error handler for ${message.res}`);
-            if(message.type === INTERNAL.NO_RESPONSE) {
-                message = new NoResponsePacket(message.data.reason);
+            if(message.error) {
+                console.log(`[PORT] Invoking error handler for ${message.res}`);
+                if(message.type === INTERNAL.NO_RESPONSE) {
+                    message = new NoResponsePacket(message.data.reason);
+                }
+                fl(message);
             }
-            fl(message);
+        }
+        var cb = CALLBACKS[message.res]
+        if(cb) {
+            delete CALLBACKS[message.res]
+            if(!message.error) {
+                console.log(`[PORT] Invoking callback handler for ${message.res}`);
+                cb(message);
+            }
         }
     }
     if(reconnect_promise) {
@@ -446,6 +449,7 @@ function setElementThumbnail(element, data) {
     while(anchor === null || anchor.tagName !== "A") {
         anchor = (anchor || element).parentElement;
     }
+    if(anchor.href.indexOf("/shorts/") >= 0) return "shorts";
     var id = HELPERS.GetVideoId(anchor.href);
     data.id = id;
     if(!id) {

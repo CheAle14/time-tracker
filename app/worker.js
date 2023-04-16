@@ -1,5 +1,5 @@
 console.log("Loaded worker.");
-import {DeferredPromise, EXTERNAL, getObjectLength, HELPERS, INTERNAL, InternalPacket, RedditCacheItem, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
+import {DeferredInternalRequest, DeferredPromise, EXTERNAL, getObjectLength, HELPERS, INTERNAL, InternalPacket, NoResponsePacket, RedditCacheItem, TrackerCache, WebSocketPacket, YoutubeCacheItem} from "./scripts/classes.js";
 
 // DONE: setup websocket connection 
 // DONE: setup popup page get information. (DONE, except for other tab info)
@@ -92,6 +92,7 @@ chrome.runtime.onConnect.addListener(function(port) {
     PORTS[port.id] = port;
     port.onMessage.addListener((msg) => {
         handleMessage(msg, port, (data) => {
+            data.res = msg.seq;
             console.log(`[${port.id}] >> `, data);
             var x = port.postMessage(data);
             if(data.error) port.disconnect();
@@ -200,6 +201,9 @@ var BLOCKLIST = null;
 var SEQUENCE = 1;
 var WS_CALLBACK = {};
 var PORTS = {};
+var PENDING_QUEUE = []; // requests to be processed after we reconnect
+var PENDING_INTERVAL = null;
+var PENDING_RETRIES = 0;
 
 var WS_PROMISE = null;
 
@@ -253,6 +257,44 @@ async function checkToken() {
     }
 }
 
+async function checkPending() {
+    if(PENDING_QUEUE.length === 0) {
+        console.log("Pending queue is empty, ceasing interval.");
+        clearInterval(PENDING_INTERVAL)
+    } else if(WS === null) {
+        console.log("WS is null, init");
+        initWs();
+    } else if(WS_PROMISE.isResolved) {
+        // WS has connected and initial packet is received
+        console.log(`WS has connected, handling ${PENDING_QUEUE.length} pending`);
+        PENDING_RETRIES = 0;
+        clearInterval(PENDING_INTERVAL);
+        while(PENDING_QUEUE.length > 0) {
+            var deferred = PENDING_QUEUE.splice(0, 1)[0];
+            console.log("WS pending: ", deferred);
+            try {
+                await handleMessageWithWs(deferred.message, deferred.sender, deferred.reply);
+                console.log("Handled packet.")
+            } catch(err) {
+                console.log("Errored processing packet ", err);
+                PENDING_QUEUE.push(deferred);
+                await disconnectWs();
+                setInterval(checkPending, 1000);
+                throw err;
+            }
+        }
+    } else if (WS.readyState === 3) {
+        // WS is closed. 
+        var min = 1000 + Math.pow(2, PENDING_RETRIES);
+        var diff = Date.now() - WS.started;
+        if(diff > min) {
+            console.log("WS is closed, retrying connection", PENDING_RETRIES)
+            PENDING_RETRIES += 1;
+            initWs();
+        }
+    }
+}
+
 async function init() {
     if(INFO === null) {
         INFO = await getState("info") || {
@@ -291,7 +333,7 @@ async function init() {
         CACHE.dirty = false; // we've just loaded it from storage, it can't be dirty.
         console.log("Loaded cache: ", CACHE);
     }
-    if(WS == null) {
+    if(WS == null || WS.readyState === 3) {
         console.logws = (...data) => {
             console.log("[WS] ", ...data);
         }
@@ -315,7 +357,9 @@ function initWs() {
             WS = null;
         }
     }
-    WS = new WebSocket(`${CONFIG.ws}?api-key=${INFO.token}&v=${API_VERSION}`);
+    var e = PENDING_RETRIES < 10 ? "_err_" : "";
+    WS = new WebSocket(`${CONFIG.ws}${e}?api-key=${INFO.token}&v=${API_VERSION}`);
+    WS.started = Date.now();
     WS.onopen = wsOpen;
     WS.onclose = wsClose;
     WS.onmessage = wsMessage;
@@ -348,6 +392,35 @@ async function handleMessage(message, sender, reply) {
         return;
     }
 
+    if(message.type === INTERNAL.NAVIGATE_ID) {
+        chrome.tabs.create({
+            url: `https://youtube.com/watch?v=${encodeURIComponent(message.data)}`
+        });
+    } else {
+        await handleMessageWithWs(message, sender, reply);
+    }
+}
+
+async function handleMessageWithWs(message, sender, reply) {
+    if(WS === null || WS.readyState !== 1) { // null or not OPEN
+        // defer processing this request to later.
+        console.log("WS is not connected, deferring", message);
+        if(message.type === INTERNAL.SET_WATCHING) {
+            // cannot be deferred.
+            reply(new NoResponsePacket("instant"));
+        } else {
+            var def = new DeferredInternalRequest(message, sender, reply);
+            PENDING_QUEUE.push(def);
+    
+            if(PENDING_INTERVAL === null) {
+                PENDING_INTERVAL = setInterval(checkPending, 1000);
+            }
+        }
+
+        return;
+    }
+
+
     if(message.type === "getLatest") {
         var latest = await fetchWs(new WebSocketPacket(EXTERNAL.GET_LATEST, null));
         console.log("Latest: ", latest);
@@ -355,7 +428,7 @@ async function handleMessage(message, sender, reply) {
     } else if (message.type === INTERNAL.GET_TIMES) {
         var result = await getTimes(message.data);
         reply(new InternalPacket(INTERNAL.GOT_TIMES, result));
-    } else if(message.type === "setWatching") {
+    } else if(message.type === INTERNAL.SET_WATCHING) {
         var result = await fetchWs(new WebSocketPacket(EXTERNAL.GET_TIMES, [message.data]));
         reply(new InternalPacket(INTERNAL.GOT_TIMES, result.content));
     } else if(message.type === "setTime") {
@@ -383,10 +456,6 @@ async function handleMessage(message, sender, reply) {
         var p = new InternalPacket("response", rep);
         p.res = message.seq;
         reply(p);
-    } else if(message.type === INTERNAL.NAVIGATE_ID) {
-        chrome.tabs.create({
-            url: `https://youtube.com/watch?v=${encodeURIComponent(message.data)}`
-        });
     }
 }
 
@@ -459,7 +528,6 @@ async function wsOpen(event) {
 async function wsClose(event) {
     console.logws("[CLOSE] ", event);
     if(!WS_PROMISE.isResolved) WS_PROMISE.reject(event);
-    WS = null;
 }
 async function wsError(err) {
     console.logws("[ERR] ", err);
@@ -536,5 +604,4 @@ async function fetchWs(packet) {
         }
     }
 }
-
 
