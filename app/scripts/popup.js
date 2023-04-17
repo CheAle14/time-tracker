@@ -26,6 +26,8 @@ port.onMessage.addListener(function(message, sender, response) {
         setLatest(message.data);
     } else if(message.type == "blocklist") {
         setBlacklist(message.data);
+    } else if(message.type === "sendConfig") {
+        setConfig(message.data);
     }
 });
 function postMessage(packet) {
@@ -123,6 +125,31 @@ function setLatest(data) {
         txt.innerText = ` @ ${HELPERS.ToTime(vidData.saved)}; ${when}`;
         elem.appendChild(txt);
         ls.appendChild(elem);
+    }
+}
+
+function setConfig(config) {
+    var div = document.getElementById("config");
+    for(let key in config) {
+        var value = config[key];
+
+        var label = document.createElement("label");
+        label.innerText = key + ": "; 
+
+        var input = document.createElement("input");
+        input.id = ":" + key;
+        input.type = "text";
+        input.value = value;
+        input.onchange = function(event) {
+            var _key = this.id.substring(1);
+            var d = {};
+            d[_key] = this.value;
+            postMessage({type: "updateConfig", data: d});
+        };
+
+        div.appendChild(label);
+        div.appendChild(input);
+        div.appendChild(document.createElement("br"));
     }
 }
 

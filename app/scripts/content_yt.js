@@ -14,10 +14,10 @@ function injectScript(src) {
     injectHolder.setAttribute("id", "injectHolder");
     document.body.appendChild(injectHolder);
 
-    injectHolder.addEventListener("data", function(e) {
+    injectHolder.addEventListener("data", async function(e) {
         console.log("Got data: ", e.detail);
-        src.postMessage({type: "getTimes", data: e.detail});
-        setTimeout(function() {
+        await src.handleGetTimes(e.detail);
+        setTimeout(async function() {
             var mf = src.setThumbnails();
             console.log("Inject found: ", mf);
 
@@ -28,9 +28,7 @@ function injectScript(src) {
                     mustF.push(x);
                 }
             }
-            console.log("Inject must fetch additional: ", mustF);
-            src.postMessage({type: "getTimes", data: mustF});
-
+            await src.handleGetTimes(mustF);
         }, 4000);
     })
 }

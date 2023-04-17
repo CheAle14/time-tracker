@@ -357,7 +357,13 @@ function initWs() {
             WS = null;
         }
     }
-    WS = new WebSocket(`${CONFIG.ws}?api-key=${INFO.token}&v=${API_VERSION}`);
+    var since = null;
+    if(CACHE && CACHE.timestamp) {
+        since = `&since=${CACHE.timestamp}`;
+    }
+
+
+    WS = new WebSocket(`${CONFIG.ws}?api-key=${INFO.token}&v=${API_VERSION}${since}`);
     WS.started = Date.now();
     WS.onopen = wsOpen;
     WS.onclose = wsClose;
@@ -378,11 +384,17 @@ async function handleMessage(message, sender, reply) {
     console.log(id(sender), " << ", message);
     await init();
     if(message.type === "getData") {
-        return;
+        reply({type: "sendConfig", data: CONFIG});
     } else if (message.type === "setToken") {
         var resp = await setToken(message.data);
 
         reply({type: "sendInfo", data: INFO});
+        return;
+    } else if(message.type === "updateConfig") {
+        for(let key in message.data) {
+            CONFIG[key] = message.data[key];
+            await sync();
+        }
         return;
     }
 
@@ -553,6 +565,16 @@ async function wsMessage(event) {
     if(packet.id === EXTERNAL.UPDATE_IGNORED_VIDEOS) {
         await setState("blocklist", Object.keys(packet.content));
         if(!WS_PROMISE.isResolved) WS_PROMISE.resolve();
+    } else if(packet.id === EXTERNAL.GET_TIMES) {
+        // catchup times on initial connection
+        for(let id in packet.content) {
+            var time = packet.content[id];
+            var item = new YoutubeCacheItem(id, Date.now(), time, 3600); // cache these for an hour
+            CACHE.Add(item);
+        }
+        if(CACHE.dirty) {
+            await setState("cache", CACHE.Save());
+        }
     }
 }
 

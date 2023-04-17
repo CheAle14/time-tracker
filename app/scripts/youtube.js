@@ -51,16 +51,11 @@ function hasRecentTransmission() {
 }
 
 // This is exported so the content_yt.js file can call it.
-export async function postMessage(packet, callback, failure) {
-    if(callback) {
-        packet.seq = SEQUENCE++;
-        CALLBACKS[packet.seq] = callback;
-    }
-    if(failure) {
-        if(!packet.seq)
-            packet.seq = SEQUENCE++;
-        FAILS[packet.seq] = failure;
-    }
+
+export async function postMessage(packet, timeout = null) {
+    var prom = new DeferredPromise(timeout);
+    packet.seq = SEQUENCE++;
+    CALLBACKS[packet.seq] = prom;
     console.debug(`[PORT] >>`, packet);
     if(!port) {
         try {
@@ -83,6 +78,7 @@ export async function postMessage(packet, callback, failure) {
     }
     lastMessageSent = Date.now();
     port.postMessage(packet);
+    return prom.promise;
 }
 
 var reconnect_timer = null;
@@ -117,10 +113,7 @@ function portOnMessage(message, sender, response) {
     if(message.type === "blocklist") {
         BLOCKLISTED_VIDEOS = message.data;
     } else if(message.type === "gotTimes") {
-        for(let a in message.data) {
-            CACHE[a] = message.data[a];
-        }
-        setTimes(message.data);
+        
     } else if (message.type === "error") {
         console.error(message.data);
         errorToast.setText(message.data);
@@ -191,24 +184,14 @@ function portOnMessage(message, sender, response) {
         alert(message.data);
     }
     if(message.res) {
-        var fl = FAILS[message.res];
-        if(fl) {
-            delete FAILS[message.res];
-            if(message.error) {
-                console.log(`[PORT] Invoking error handler for ${message.res}`);
-                if(message.type === INTERNAL.NO_RESPONSE) {
-                    message = new NoResponsePacket(message.data.reason);
-                }
-                fl(message);
-            }
-        }
-        var cb = CALLBACKS[message.res]
-        if(cb) {
-            delete CALLBACKS[message.res]
-            if(!message.error) {
-                console.log(`[PORT] Invoking callback handler for ${message.res}`);
-                cb(message);
-            }
+        var prom = CALLBACKS[message.res];
+        if(prom) {
+            console.log("Handling promise for ", message.res);
+            delete CALLBACKS[message.res];
+            if(message.error)
+                prom.reject(message);
+            else
+                prom.resolve(message);
         }
     }
     if(reconnect_promise) {
@@ -612,6 +595,20 @@ export function setThumbnails() {
     return mustFetch;
 }
 
+export async function handleGetTimes(tofetch) {
+    if(tofetch.length === 0) {
+        console.log("Not fetching nothing.");
+        return;
+    }
+    console.log("Fetching:", tofetch);
+    var result = await postMessage({type: "getTimes", data: tofetch});
+    console.log("Data back: ", result);
+    for(let a in result.data) {
+        CACHE[a] = result.data[a];
+    }
+    setTimes(result.data);
+}
+
 function getVideoWatchedStage(percentageWatched, timeRemainSeconds) {
     if((percentageWatched >= 0.95 && timeRemainSeconds < 180) || timeRemainSeconds < 10) {
         return "watched";
@@ -874,7 +871,24 @@ function addVideoListeners() {
     vid.setAttribute("mlapi-events", "true")
 }
 
-function boot() {
+async function setWatching(isAd) {
+    try {
+        var results = await postMessage({type: INTERNAL.SET_WATCHING, data: WATCHING});
+        for(let k in results.data) {
+            CACHE[k] = results.data[k];
+        }
+        setTimes(results.data);
+    } catch(err) {
+        console.error("Could not set watching ", err);
+        vidToolTip.AddFlavour(new VideoToolTipFlavour(`Failed to fetch video time ${isAd ? "ad":""}: ${err.data.reason}`, {color: "red"}, -1));
+        CACHE[WATCHING] = 0;
+        var d = {};
+        d[WATCHING] = 0;
+        setTimes(d);
+    }
+}
+
+async function boot() {
     WATCHING = HELPERS.GetVideoId(window.location.href);
     thumbnailBatch = 0;
     if(WATCHING) {
@@ -902,12 +916,7 @@ function boot() {
                 skipAd();
             } else {
                 // sent one message on the first pass
-                postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
-                    console.error("Could not set watching ", err);
-                    vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time (ad) " + err.data.reason, {color: "red"}, -1));
-                    CACHE[WATCHING] = 0;
-                    setTimes([WATCHING]);
-                });
+                await setWatching(true);
             }
             STATUS.AD = true;
             setTimeout(boot, 100);
@@ -952,12 +961,7 @@ function boot() {
             if(IS_MOBILE === false)
                 addVideoListeners();
             if(!STATUS.AD) {
-                postMessage({type: "setWatching", data: WATCHING}, null, function(err) {
-                    console.error("Could not set watching ", err);
-                    vidToolTip.AddFlavour(new VideoToolTipFlavour("Failed to fetch video time " + err.data.reason, {color: "red"}, -1));
-                    CACHE[WATCHING] = 0;
-                    setTimes([WATCHING]);
-                });
+                await setWatching(false);
                 watchingToast.setText("Fetching video saved time..");
                 flavRemoveLoaded.push(vidToolTip.AddFlavour(new VideoToolTipFlavour("Fetching..", {color: "blue"}, 5000)));
             }
@@ -972,7 +976,7 @@ function boot() {
     }
 }
 
-function saveTime() {
+async function saveTime() {
     if(STATUS.HALTED) {
         pause("Save time, but HALTED");
         //pause();
@@ -993,7 +997,7 @@ function saveTime() {
     var sv = {};
     sv[WATCHING] = time;
     CACHE[WATCHING] = time;
-    postMessage({type: "setTime", data: sv});
+    await postMessage({type: "setTime", data: sv});
     setQueryTime(time);
 }
 
@@ -1017,7 +1021,7 @@ function clearToasts() {
     watchingToast.hideToast();
 }
 
-function checkThumbnails() {
+async function checkThumbnails() {
     const ROOT = new DebugTimer();
     ROOT.push("checkThumbnails");
     ROOT.time("thumbnails");
@@ -1025,11 +1029,11 @@ function checkThumbnails() {
     ROOT.timeEnd("thumbnails")
     if(tofetch.length > 0) {
         ROOT.time("send");
-        postMessage({type: "getTimes", data: tofetch});
         if(!isWatchingFullScreen()) {
             fetchingToast.setText(`Fetching ${tofetch.length} thumbnails..`);
         }
         ROOT.timeEnd("send");
+        await handleGetTimes(tofetch);
     } else if(fetchingToast.showing) {
         fetchingToast.hideToast();
     }

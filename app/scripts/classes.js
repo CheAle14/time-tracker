@@ -113,7 +113,7 @@ export class CacheItem {
      * @param {string} id 
      * @param {Date} cachedAt 
      */
-    constructor(kind, id, cachedAt) {
+    constructor(kind, id, cachedAt, ttl = 300) {
         this._kind = kind;
         this.id = id;
         var type = typeof(cachedAt);
@@ -124,7 +124,7 @@ export class CacheItem {
         } else {
             throw new Error("cachedAt must be number or Date, was " + typeof(cachedAt));
         }
-        this.ttl = 300; // seconds to live in cache.
+        this.ttl = ttl; // seconds to live in cache.
     }
 
     get Id() {
@@ -189,6 +189,7 @@ export class TrackerCache {
     constructor() {
         this._cache = {};
         this.dirty = false;
+        this.timestamp = null;
     }
 
     /**
@@ -200,6 +201,7 @@ export class TrackerCache {
         console.debug(`[CACHE] Inserted ${item.id} into cache at ${Date.now()}`);
         this._cache[item.id] = item;
         this.dirty = true;
+        this.timestamp = Date.now();
     }
     /**
      * Places the cache item into the cache
@@ -953,6 +955,7 @@ export class DeferredPromise {
         this.promise = new Promise((resolve, reject)=> {
             this.reject = (reason) => {
                 this.isRejected = true;
+                clearTimeout(this.tm);
                 console.log("Rejecting deferred promise ", reason);
                 reject(reason);
             };
