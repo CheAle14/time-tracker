@@ -455,6 +455,8 @@ async function handleMessageWithWs(message, sender, reply) {
         var p = new InternalPacket("response", rep);
         p.res = message.seq;
         reply(p);
+    } else {
+        console.warn("Unknown internal message type:", message);
     }
 }
 
