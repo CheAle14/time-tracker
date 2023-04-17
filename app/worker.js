@@ -357,8 +357,7 @@ function initWs() {
             WS = null;
         }
     }
-    var e = PENDING_RETRIES < 10 ? "_err_" : "";
-    WS = new WebSocket(`${CONFIG.ws}${e}?api-key=${INFO.token}&v=${API_VERSION}`);
+    WS = new WebSocket(`${CONFIG.ws}?api-key=${INFO.token}&v=${API_VERSION}`);
     WS.started = Date.now();
     WS.onopen = wsOpen;
     WS.onclose = wsClose;
