@@ -118,9 +118,9 @@ export class CacheItem {
         this.id = id;
         var type = typeof(cachedAt);
         if(type === "number") {
-            this.cachedAt = new Date(cachedAt);
-        } else if (type === Date.constructor.name) {
             this.cachedAt = cachedAt;
+        } else if (type === Date.constructor.name) {
+            this.cachedAt = cachedAt.getTime();
         } else {
             throw new Error("cachedAt must be number or Date, was " + typeof(cachedAt));
         }
@@ -141,15 +141,15 @@ export class CacheItem {
      * @type {boolean}
      */
     get IsExpired() {
-        var expiresAt = new Date(this.cachedAt.getTime() + (this.ttl * 1000));
-        return Date.now() > expiresAt;
+        var now = Date.now()
+        return now > (this.cachedAt + (this.ttl * 1000));
     }
 
     Save() {
         return {
             _kind: this._kind,
             id: this.id,
-            cachedAt: this.cachedAt.getTime()
+            cachedAt: this.cachedAt
         };
     }
 }
@@ -197,11 +197,14 @@ export class TrackerCache {
      * @param {CacheItem} item 
      */
     Insert(item) {
-        item.cachedAt = new Date();
-        console.debug(`[CACHE] Inserted ${item.id} into cache at ${Date.now()}`);
+        if(!item.cachedAt) {
+            item.cachedAt = Date.now()
+        }
+        console.debug(`[CACHE] Inserted ${item.id} into cache at ${item.cachedAt}`);
         this._cache[item.id] = item;
         this.dirty = true;
-        this.timestamp = Date.now();
+        if(item.cachedAt > this.timestamp)
+            this.timestamp = item.cachedAt;
     }
     /**
      * Places the cache item into the cache
@@ -224,7 +227,7 @@ export class TrackerCache {
                 delete this._cache[id];
                 return null;
             }
-            var hasBeenInCache = Date.now() - x.cachedAt.getTime();
+            var hasBeenInCache = Date.now() - x.cachedAt;
             console.debug(`[CACHE] Found ${id} in cache, ttl remaining: ${x.ttl - (hasBeenInCache/1000)}s`, x);
         } else {
             console.debug(`[CACHE] Could not find ${id} in cache`);

@@ -443,6 +443,10 @@ async function handleMessageWithWs(message, sender, reply) {
         var result = await fetchWs(new WebSocketPacket(EXTERNAL.GET_TIMES, [message.data]));
         reply(new InternalPacket(INTERNAL.GOT_TIMES, result.content));
     } else if(message.type === "setTime") {
+        for(let key in message.data) {
+            var c = new YoutubeCacheItem(key, Date.now(), message.data[key]);
+            CACHE.Insert(c);
+        }
         var result = await fetchWs(new WebSocketPacket(EXTERNAL.SET_TIMES, message.data));
         reply(new InternalPacket("savedTime", message.data));
     } else if(message.type === INTERNAL.GET_REDDIT_COUNT) {
