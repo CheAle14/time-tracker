@@ -299,6 +299,11 @@ function addTimeSelectionBox(times) {
 
     var selectElem = document.createElement("select");
     selectElem.id = "mlapi-visits";
+    
+    var customOpt = document.createElement("option");
+    customOpt.value = "-1";
+    customOpt.textContent = "Custom time"
+    selectElem.appendChild(customOpt);
 
     var setSelected = false;
     for(var time of times) {
@@ -311,6 +316,16 @@ function addTimeSelectionBox(times) {
             opt.setAttribute("selected", "")
         }
         
+    }
+    if(setSelected == false && HIGHLIGHT_SINCE) {
+        // we have a hightlight since, but not amongst our prior vists.
+        // probably a custom set time, so add it in:
+        var opt = document.createElement("option");
+        opt.value = HIGHLIGHT_SINCE;
+        opt.textContent = `Query: ${time_ago(HIGHLIGHT_SINCE)}`;
+        selectElem.appendChild(opt);
+        opt.setAttribute("selected", "");
+        setSelected = true;
     }
     if(!setSelected) {
         selectElem.children[selectElem.children.length - 1].setAttribute("selected", "")
@@ -325,8 +340,22 @@ function addTimeSelectionBox(times) {
 
 function update_highlighting(event) {
     //console.log("HNC-UpdateHighlighting", event);
+
+
     reset_highlighting();
-    highlight(parseInt(event.target.value));
+    var time = parseInt(event.target.value);
+    if(time === -1) {
+        var hours = parseFloat(prompt("How many hours ago to highlight since?", "0.0"));
+        var milliseconds = hours * 60 * 60 * 1000
+        time = Date.now() - milliseconds;
+        var opt = document.createElement("option");
+        opt.value = time
+        opt.textContent = `Custom: ${time_ago(time)}`;
+        event.target.selectedOptions[0].removeAttribute("selected");
+        opt.setAttribute("selected", "");
+        event.target.appendChild(opt);
+    }
+    highlight(time);
 }
 
 function reset_highlighting() {
