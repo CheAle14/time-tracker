@@ -163,4 +163,8 @@ function navigateToPort(event) {
     postMessage(new InternalPacket("highlightTab", portId));
 }
 
+document.getElementById("buttonClrCache").onclick = function() {
+    postMessage(new InternalPacket(INTERNAL.CLEAR_CACHE, null));
+}
+
 postMessage({type: "getData"});

@@ -450,7 +450,8 @@ export const INTERNAL = {
     REDDIT_VISITED: "redditVisited",
     IGNORED_VIDEO: "ignoredVideo",
     NO_RESPONSE: "noResponse",
-    SET_WATCHING: "setWatching"
+    SET_WATCHING: "setWatching",
+    CLEAR_CACHE: "clearCache"
 }
 
 /**

@@ -179,6 +179,9 @@ function handleInfo(anchors, data) {
     if(threadData.count === -1) {
         return;
     }
+    if(typeof(threadData.visits) === "number") {
+        threadData.visits = [threadData.visits];
+    }
     console.log(`Adding selection for `, threadData);
     const urlSearchParams = new URLSearchParams(window.location.search);
     var snc = urlSearchParams.get("hnc_since");

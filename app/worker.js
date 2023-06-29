@@ -357,7 +357,7 @@ function initWs() {
             WS = null;
         }
     }
-    var since = null;
+    var since = "";
     if(CACHE && CACHE.timestamp) {
         since = `&since=${CACHE.timestamp}`;
     }
@@ -471,6 +471,12 @@ async function handleMessageWithWs(message, sender, reply) {
         var p = new InternalPacket("response", rep);
         p.res = message.seq;
         reply(p);
+    } else if (message.type === INTERNAL.CLEAR_CACHE) {
+        CACHE.Clear();
+        await setState("cache", CACHE.Save());
+        var p = new InternalPacket("response", null)
+        p.res = message.seq;
+        reply(p);
     } else {
         console.warn("Unknown internal message type:", message);
     }
@@ -574,6 +580,16 @@ async function wsMessage(event) {
         for(let id in packet.content) {
             var time = packet.content[id];
             var item = new YoutubeCacheItem(id, Date.now(), time, 3600); // cache these for an hour
+            CACHE.Add(item);
+        }
+        if(CACHE.dirty) {
+            await setState("cache", CACHE.Save());
+        }
+    } else if(packet.id === EXTERNAL.GET_THREADS) {
+        // similarly, catchup with threads.
+        for(let id in packet.content) {
+            var data = packet.content[id];
+            var item = new RedditCacheItem(id, Date.now(), data.when, data.count);
             CACHE.Add(item);
         }
         if(CACHE.dirty) {
