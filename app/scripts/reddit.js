@@ -445,7 +445,10 @@ function highlight(since) {
         }
 
         /* skip our own comments */
-        let author = comment.getElementsByClassName('author')[0].textContent;
+        let authorElem = comment.getElementsByClassName("author")[0];
+        if(!authorElem) continue;
+
+        let author = authorElem.textContent;
         if (username && username == author) {
             continue;
         }
