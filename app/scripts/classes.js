@@ -171,7 +171,23 @@ export class RedditCacheItem extends CacheItem {
         super(CACHE_KIND.REDDIT, id, cachedAt);
         this.count = count;
         this.ttl = 60 * 60; // seconds to live in cache
-        this.visits = visitedAt;
+        if(typeof(visitedAt) === "number") {
+            this.visits = [visitedAt];
+        } else if (Array.isArray(visitedAt)) {
+            this.visits = [];
+            for(let item of visitedAt) {
+                if(typeof(item) === "number") {
+                    this.visits.push({
+                        "t": item,
+                        "c": 0
+                    });
+                } else {
+                    this.visits.push(item);
+                }
+            }
+        } else {
+            throw new TypeError(`Visited at has unexpected type: ${visitedAt}`);
+        }
     }
 
     get Visits() {

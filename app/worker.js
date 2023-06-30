@@ -10,7 +10,7 @@ import {DeferredInternalRequest, DeferredPromise, EXTERNAL, getObjectLength, HEL
 
 // TODO: reddit
 
-const API_VERSION = 2;
+const API_VERSION = 3;
 
 function getState(key) {
     return new Promise((resolve, reject) => {
@@ -461,12 +461,14 @@ async function handleMessageWithWs(message, sender, reply) {
         }
         var existing = CACHE.Fetch(message.data.id);
         if(!existing) {
+            console.debug(`No cache for visited thread ${message.data.id}, creating`)
             existing = new RedditCacheItem(message.data.id, 0, [], 0);
         }
         existing.cachedAt = Date.now();
         existing.visits.push(Date.now());
         existing.count = message.data.count;
         CACHE.Insert(existing);
+        await setState("cache", CACHE.Save());
         var rep = await fetchWs(new WebSocketPacket(EXTERNAL.VISITED_THREAD, message.data));
         var p = new InternalPacket("response", rep);
         p.res = message.seq;

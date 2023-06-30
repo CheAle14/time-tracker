@@ -5,6 +5,7 @@ var SEQUENCE = 1;
 var CALLBACKS = {};
 var ERRORS = {};
 
+var CURRENT = null;
 var HIGHLIGHT_SINCE = null;
 
 /**
@@ -137,34 +138,75 @@ function getCount(anchor) {
     var text = anchor.innerText;
     var mtch = text.match(/[0-9]+/m);
     if(mtch) {
-        console.log(mtch);
         return parseInt(mtch[0]);
     } else {
         return 0;
     }
 }
+function getNewCountElement(anchor, noCreate = false) {
+    if(!anchor) return null;
+    var children = anchor.getElementsByClassName("newComments");
+    if(children.length === 0) {
+        if(noCreate) return null;
+        var newSpan = document.createElement("span");
+        newSpan.innerText = ` (x new)`;
+        newSpan.classList.add("newComments");
+        anchor.appendChild(newSpan);
+        return newSpan;
+    } else {
+        return children[0];
+    }
+}
 
-function handleInfo(anchors, data) {
+function setAnchorDetails(anchor, obj) {
+    var currentCount = getCount(anchor);
+    var objCount = null;
+    if(HIGHLIGHT_SINCE) {
+        for(let x of obj.visits) {
+            if(x.t === HIGHLIGHT_SINCE) {
+                objCount = x["c"];
+                break
+            }
+        }
+    } else {
+        objCount = obj.visits[obj.visits.length-1]["c"];
+    }
+    if(currentCount > objCount) {
+        var existing = getNewCountElement(anchor);
+        existing.innerText = ` (${currentCount - objCount} new)`;
+        existing.style.color = "rgb(255, 69, 0)";
+    } else {
+        anchor.style.color = "#009900";
+        var existing = getNewCountElement(anchor, true);
+        if(existing) {
+            existing.innerText = " (no new)";
+            existing.style.color = "#009900"
+        }
+    }
+}
+
+function setAllAnchorInfo(anchors, data) {
     for(var anchor of anchors) {
         var id = getThingId(anchor);
         var obj = data[id];
         if(!obj) {
             continue;
         }
-        if(obj.count === -1) {
+        if(obj.visits.length === 0) {
             continue;
         }
-        var currentCount = getCount(anchor);
-        if(currentCount > obj.count) {
-            var newSpan = document.createElement("span");
-            newSpan.innerText = ` (${currentCount - obj.count} new)`;
-            newSpan.classList.add("newComments");
-            newSpan.style.color = "rgb(255, 69, 0)"
-            anchor.appendChild(newSpan);
-        } else {
-            anchor.style.color = "#009900";
-        }
+        setAnchorDetails(anchor, obj);
     }
+}
+
+function handleInfo(anchors, data) {
+    const urlSearchParams = new URLSearchParams(window.location.search);
+    var snc = urlSearchParams.get("hnc_since");
+    if(snc) {
+        HIGHLIGHT_SINCE = parseInt(snc);
+    }
+
+    setAllAnchorInfo(anchors, data);
 
     if(!ID) {
         return;
@@ -176,23 +218,16 @@ function handleInfo(anchors, data) {
     if(!threadData) {
         return;
     }
-    if(threadData.count === -1) {
-        return;
-    }
+    CURRENT = threadData;
     if(typeof(threadData.visits) === "number") {
         threadData.visits = [threadData.visits];
     }
-    console.log(`Adding selection for `, threadData);
-    const urlSearchParams = new URLSearchParams(window.location.search);
-    var snc = urlSearchParams.get("hnc_since");
-    if(snc) {
-        HIGHLIGHT_SINCE = parseInt(snc);
-        console.log("Setting highlight since from query:", HIGHLIGHT_SINCE)
-    } else {
-        HIGHLIGHT_SINCE = threadData.visits[threadData.visits.length - 1]
+    if(threadData.visits.length == 0) return;
+    if(!HIGHLIGHT_SINCE) {
+        HIGHLIGHT_SINCE = threadData.visits[threadData.visits.length - 1]["t"];
     }
 
-    addTimeSelectionBox(threadData.visits);
+    addTimeSelectionBox(threadData.visits.map(item => item["t"]));
     setHighlighting();
 }
 
@@ -357,6 +392,13 @@ function update_highlighting(event) {
         event.target.selectedOptions[0].removeAttribute("selected");
         opt.setAttribute("selected", "");
         event.target.appendChild(opt);
+    }
+    HIGHLIGHT_SINCE = time;
+    if(event.target.classList !== undefined) {
+        var anchors = getThreadCommentLinks();
+        var o ={};
+        o[ID] = CURRENT;
+        setAllAnchorInfo(anchors, o);
     }
     highlight(time);
 }
