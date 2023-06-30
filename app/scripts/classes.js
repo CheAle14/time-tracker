@@ -111,7 +111,7 @@ export class CacheItem {
      * 
      * @param {CACHE_KIND} kind 
      * @param {string} id 
-     * @param {Date} cachedAt 
+     * @param {number} cachedAt 
      */
     constructor(kind, id, cachedAt, ttl = 300) {
         this._kind = kind;

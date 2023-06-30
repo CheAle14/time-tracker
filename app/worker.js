@@ -463,7 +463,7 @@ async function handleMessageWithWs(message, sender, reply) {
         if(!existing) {
             existing = new RedditCacheItem(message.data.id, 0, [], 0);
         }
-        existing.cachedAt = new Date();
+        existing.cachedAt = Date.now();
         existing.visits.push(Date.now());
         existing.count = message.data.count;
         CACHE.Insert(existing);
