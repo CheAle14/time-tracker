@@ -110,10 +110,27 @@ async function connectToExtension() {
 
 function portOnMessage(message, sender, response) {
     console.debug("[PORT] <<", message);
+    if(reconnect_promise) {
+        reconnect_promise.resolve(port);
+    }
+    if(message.res) {
+        var prom = CALLBACKS[message.res];
+        if(prom) {
+            console.log("Handling promise for ", message.res);
+            delete CALLBACKS[message.res];
+            if(message.error)
+                prom.reject(message);
+            else
+                prom.resolve(message);
+            return;
+        } else {
+            console.warn("Unknown response:", message);
+        }
+    }
     if(message.type === "blocklist") {
         BLOCKLISTED_VIDEOS = message.data;
     } else if(message.type === "gotTimes") {
-        
+        setTimes(message.data);
     } else if (message.type === "error") {
         console.error(message.data);
         errorToast.setText(message.data);
@@ -182,20 +199,6 @@ function portOnMessage(message, sender, response) {
         play();
     } else if(message.type === "alert") {
         alert(message.data);
-    }
-    if(message.res) {
-        var prom = CALLBACKS[message.res];
-        if(prom) {
-            console.log("Handling promise for ", message.res);
-            delete CALLBACKS[message.res];
-            if(message.error)
-                prom.reject(message);
-            else
-                prom.resolve(message);
-        }
-    }
-    if(reconnect_promise) {
-        reconnect_promise.resolve(port);
     }
 };
 
@@ -535,6 +538,7 @@ function setElementThumbnail(element, data) {
         ROOT.timeEnd("in-attrs");
         rtn = "updated";
     } else {
+        storeThumbnailElement(id, element);
         if(state.startsWith("fetching")) {
             ROOT.time("not-exist");
             var test = state.endsWith("1");
@@ -550,7 +554,6 @@ function setElementThumbnail(element, data) {
             element.style.border = "1px red";
             element.innerText = `🔄 ${HELPERS.ToTime(vidLength)}`;
             delete CACHE[id];
-            THUMBNAIL_ELEMENTS[id] = element;
             rtn = "fetch";
             ROOT.timeEnd("not-fetch");
         }
@@ -603,9 +606,6 @@ export async function handleGetTimes(tofetch) {
     console.log("Fetching:", tofetch);
     var result = await postMessage({type: "getTimes", data: tofetch});
     console.log("Data back: ", result);
-    for(let a in result.data) {
-        CACHE[a] = result.data[a];
-    }
     setTimes(result.data);
 }
 
@@ -734,12 +734,29 @@ function checkWatchingData() {
     }
 }
 
-function setTimes(ids) {
+function storeThumbnailElement(id, element) {
+    var div = null;
+    while(div === null || div.tagName !== "DIV" || div.id !== "thumbnail") {
+        div = (div || element).parentElement;
+    }
+    THUMBNAIL_ELEMENTS[id] = div;
+    return div;
+}
+
+function getThumbnailElement(id) {
+    var elem = THUMBNAIL_ELEMENTS[id];
+    if(elem === null || elem === undefined) return elem;
+    return elem.querySelector("span#text");
+}
+
+function setTimes(data) {
     thumbnailBatch = 0;
     //var mustFetch = setThumbnails();
 
-    for(let id in ids) {
-        const elem = THUMBNAIL_ELEMENTS[id];
+    for(let id in data) {
+        const time = data[id];
+        CACHE[id] = time;
+        const elem = getThumbnailElement(id);
         if(elem) {
             setElementThumbnail(elem, {});
             delete THUMBNAIL_ELEMENTS[id];
@@ -1048,11 +1065,12 @@ setInterval(function() {
         lastUrl = currentUrl.pathname;
         console.log("New URL; clearing thumbnail batch");
         injectScript();
-        if(THUMBNAIL_INTERVAL === null) {
-            setTimeout(checkThumbnails, 1500);
-            if(!IS_MOBILE) {
-                THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
-            }
+        if(THUMBNAIL_INTERVAL) {
+            clearInterval(THUMBNAIL_INTERVAL);
+        }
+        setTimeout(checkThumbnails, 1500);
+        if(!IS_MOBILE) {
+            THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
         }
     }
     var w = HELPERS.GetVideoId(currentUrl.href);
