@@ -199,8 +199,12 @@ function portOnMessage(message, sender, response) {
         play();
     } else if(message.type === "alert") {
         alert(message.data);
+    } else if(message.type === INTERNAL.CHECK_FOR_VIDEOS) {
+        checkThumnailsSoonTimeout = setTimeout(checkThumbnails, 4000);
     }
 };
+
+var checkThumnailsSoonTimeout = null;
 
 async function portOnDisconnect() {
     console.log("Disconnected from backend extension");
@@ -300,17 +304,23 @@ function parseToSeconds(text) {
     return (hours * 60 * 60) + (mins * 60) + secs;
 }
 
-const THUMBNAIL_NODE = IS_MOBILE ? "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER" : "SPAN";
-function* getThumbnails() {
-    var elements = null;
+const THUMBNAIL_NODE = "YTM-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER";
+function getThumbnails() {
     if(IS_MOBILE) {
-        elements = document.getElementsByTagName("ytm-thumbnail-overlay-time-status-renderer");
+        var elements = document.getElementsByTagName("ytm-thumbnail-overlay-time-status-renderer");
+        var arr = [];
+        for(var el of elements) {
+            if(el.tagName === THUMBNAIL_NODE) 
+                arr.push(el);
+        }
+        return arr;
     } else {
-        elements = document.getElementsByClassName("style-scope ytd-thumbnail-overlay-time-status-renderer");
-    }
-    for(let e of elements) {
-        if(e.tagName === THUMBNAIL_NODE)
-            yield e;
+        var elements = document.getElementsByTagName("ytd-thumbnail-overlay-time-status-renderer");
+        var arr = [];
+        for(var el of elements) {
+            arr.push(el.querySelector("span#text"));
+        }
+        return arr;
     }
 }
 
@@ -566,7 +576,7 @@ var thumbnailBatch = 0;
 // This is exported so the content_yt.js file can call it.
 export function setThumbnails() {
     //console.log(CACHE);
-    var mustFetch = []
+    var mustFetch = new Set();
     var thumbNails = getThumbnails();
     const timeStart = window.performance.now();
     var done = 0;
@@ -585,17 +595,17 @@ export function setThumbnails() {
         var data = {};
         var rtn = setElementThumbnail(element, data);
         if(rtn === "fetch") {
-            mustFetch.push(data.id);
+            mustFetch.add(data.id);
         } else if(rtn === "fetching") {
             thoseWaiting += 1;
         }
         
         ROOT.pop();
         var accTimeSpent = window.performance.now() - timeStart;
-        console.debug(`setThumbnails - After ${done} total time now ${accTimeSpent}ms`);
+        //console.debug(`setThumbnails - After ${done} total time now ${accTimeSpent}ms`);
     }
-    console.log(`setThumbnails looked at ${done}; taking ${window.performance.now() - timeStart}ms. Must fetch: ${mustFetch.length}, waiting: ${thoseWaiting}`);
-    return mustFetch;
+    console.debug(`setThumbnails looked at ${done}; taking ${window.performance.now() - timeStart}ms. Must fetch: ${mustFetch.size}, waiting: ${thoseWaiting}`);
+    return [...mustFetch];
 }
 
 export async function handleGetTimes(tofetch) {
@@ -606,7 +616,9 @@ export async function handleGetTimes(tofetch) {
     console.log("Fetching:", tofetch);
     var result = await postMessage({type: "getTimes", data: tofetch});
     console.log("Data back: ", result);
-    setTimes(result.data);
+    setTimeout(function() {
+        setTimes(result.data)
+    }, 500);
 }
 
 function getVideoWatchedStage(percentageWatched, timeRemainSeconds) {
@@ -734,9 +746,16 @@ function checkWatchingData() {
     }
 }
 
+function isDivThumbnail(div) {
+    return div.tagName === "DIV" && div.id === "content"
+}
+function isYtdGridThumbnail(el) {
+    return el.tagName === "YTD-THUMBNAIL";
+}
+
 function storeThumbnailElement(id, element) {
     var div = null;
-    while(div === null || div.tagName !== "DIV" || div.id !== "thumbnail") {
+    while(div === null || (!isDivThumbnail(div) && !isYtdGridThumbnail(div))) {
         div = (div || element).parentElement;
     }
     THUMBNAIL_ELEMENTS[id] = div;
@@ -1039,6 +1058,9 @@ function clearToasts() {
 }
 
 async function checkThumbnails() {
+    if(checkThumnailsSoonTimeout) {
+        clearTimeout(checkThumnailsSoonTimeout);
+    }
     const ROOT = new DebugTimer();
     ROOT.push("checkThumbnails");
     ROOT.time("thumbnails");

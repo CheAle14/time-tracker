@@ -7,6 +7,7 @@
         "activeTab",
         "tabs",
         "webNavigation",
+        "webRequest",
         "alarms",
         "contextMenus",
         "scripting"
@@ -36,7 +37,8 @@
         "type": "module"
     },
     "host_permissions": [
-        "https://mlapi.cheale14.com/*"
+        "https://mlapi.cheale14.com/*",
+        "https://www.youtube.com/youtubei/v1/browse*"
     ],
     "web_accessible_resources": [
         {

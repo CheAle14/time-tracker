@@ -467,7 +467,8 @@ export const INTERNAL = {
     IGNORED_VIDEO: "ignoredVideo",
     NO_RESPONSE: "noResponse",
     SET_WATCHING: "setWatching",
-    CLEAR_CACHE: "clearCache"
+    CLEAR_CACHE: "clearCache",
+    CHECK_FOR_VIDEOS: "checkForVideos"
 }
 
 /**

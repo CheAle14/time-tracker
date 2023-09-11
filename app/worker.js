@@ -42,6 +42,15 @@ function setState(key, value) {
     })
 }
 
+chrome.webRequest.onCompleted.addListener(async (details) => {
+    const port = PORTS[details.tabId];
+    if(port) {
+        port.postMessage({type: INTERNAL.CHECK_FOR_VIDEOS});
+    }
+}, {
+    urls: ["https://www.youtube.com/youtubei/v1/browse*"]
+})
+
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
     console.log(sender, message, reply);
     handleMessage(message, sender, (data) => {
