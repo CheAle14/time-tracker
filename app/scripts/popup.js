@@ -6,30 +6,43 @@ var inp = document.getElementById("tokenI");
 var btn = document.getElementById("buttonI");
 btn.onclick = submit;
 btn.disabled = true;
-var port = chrome.runtime.connect();
-port.onMessage.addListener(function(message, sender, response) {
-    console.log("[INT] << ", message);
-    if(message.type === "sendInfo") {
-        text.innerText = "Set token below";
-        if(message.data.token) {
-            text.innerText = text.innerText.replace("Set", "Update");
-            inp.value = message.data.token;
+var port = null;
+
+function connectToBackend() {
+    port = chrome.runtime.connect();
+    port.onMessage.addListener(function(message, sender, response) {
+        console.log("[INT] << ", message);
+        if(message.type === "sendInfo") {
+            text.innerText = "Set token below";
+            if(message.data.token) {
+                text.innerText = text.innerText.replace("Set", "Update");
+                inp.value = message.data.token;
+            }
+            if(message.data.name) {
+                text.innerText = "Logged in as " + message.data.name;
+                postMessage(new InternalPacket("getLatest", null));
+            }
+            btn.disabled = false;
+        } else if(message.type === "sendData") {
+            setTabs(message.data);
+        } else if(message.type === INTERNAL.SEND_LATEST) {
+            setLatest(message.data);
+        } else if(message.type == "blocklist") {
+            setBlacklist(message.data);
+        } else if(message.type === "sendConfig") {
+            setConfig(message.data);
         }
-        if(message.data.name) {
-            text.innerText = "Logged in as " + message.data.name;
-            postMessage(new InternalPacket("getLatest", null));
-        }
-        btn.disabled = false;
-    } else if(message.type === "sendData") {
-        setTabs(message.data);
-    } else if(message.type === INTERNAL.SEND_LATEST) {
-        setLatest(message.data);
-    } else if(message.type == "blocklist") {
-        setBlacklist(message.data);
-    } else if(message.type === "sendConfig") {
-        setConfig(message.data);
-    }
-});
+    });
+}
+
+
+async function portOnDisconnect() {
+    console.log("Disconnected from backend extension", port, chrome.runtime.lastError);
+    port = null;
+    connectToBackend();
+}
+port.onDisconnect.addListener(portOnDisconnect);
+
 function postMessage(packet) {
     console.debug("[INT] >> ", packet);
     port.postMessage(packet);
