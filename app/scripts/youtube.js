@@ -750,7 +750,7 @@ function isDivThumbnail(div) {
     return div.tagName === "DIV" && div.id === "content"
 }
 function isYtdGridThumbnail(el) {
-    return el.tagName === "YTD-THUMBNAIL";
+    return el.tagName === "YTD-THUMBNAIL" || el.tagName === "YTD-ITEM-SECTION-RENDERER";
 }
 
 function storeThumbnailElement(id, element) {
