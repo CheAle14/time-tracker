@@ -765,7 +765,11 @@ function storeThumbnailElement(id, element) {
 function getThumbnailElement(id) {
     var elem = THUMBNAIL_ELEMENTS[id];
     if(elem === null || elem === undefined) return elem;
-    return elem.querySelector("span#text");
+    if(IS_MOBILE) {
+        return elem.querySelector("ytm-thumbnail-overlay-time-status-renderer");
+    } else {
+        return elem.querySelector("span#text");
+    }
 }
 
 function setTimes(data) {
