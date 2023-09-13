@@ -33,15 +33,17 @@ function connectToBackend() {
             setConfig(message.data);
         }
     });
+    port.onDisconnect.addListener(portOnDisconnect);
 }
 
 
 async function portOnDisconnect() {
     console.log("Disconnected from backend extension", port, chrome.runtime.lastError);
     port = null;
-    connectToBackend();
+    setTimeout(connectToBackend, 500);
 }
-port.onDisconnect.addListener(portOnDisconnect);
+
+connectToBackend();
 
 function postMessage(packet) {
     console.debug("[INT] >> ", packet);
