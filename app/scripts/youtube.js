@@ -755,8 +755,13 @@ function isYtdGridThumbnail(el) {
 
 function storeThumbnailElement(id, element) {
     var div = null;
+    var limit = 0;
     while(div === null || (!isDivThumbnail(div) && !isYtdGridThumbnail(div))) {
         div = (div || element).parentElement;
+        if(limit++ > 8) {
+            div = element;
+            break;
+        }
     }
     THUMBNAIL_ELEMENTS[id] = div;
     return div;
