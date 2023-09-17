@@ -749,17 +749,31 @@ function checkWatchingData() {
 function isDivThumbnail(div) {
     return div.tagName === "DIV" && div.id === "content"
 }
-function isYtdGridThumbnail(el) {
-    return el.tagName === "YTD-THUMBNAIL" || el.tagName === "YTM-ITEM-SECTION-RENDERER";
+function isDesktopThumbnail(el) {
+    return el.tagName === "YTD-THUMBNAIL";
+}
+const ytmThumbnailTags = ["ytm-compact-video-renderer", "ytm-rich-item-renderer", "ytm-playlist-video-renderer", "ytm-item-section-renderer"]
+function isMobileThumbnail(el) {
+    return ytmThumbnailTags.indexOf(el.tagName.toLowerCase()) >= 0;
+}
+
+function isPersistentThumbnailElement(el) {
+    return isDivThumbnail(el) || isDesktopThumbnail(el) || isMobileThumbnail(el);
 }
 
 function storeThumbnailElement(id, element) {
     var div = null;
     var limit = 0;
-    while(div === null || (!isDivThumbnail(div) && !isYtdGridThumbnail(div))) {
+    var seen = [element];
+    while(div === null || isPersistentThumbnailElement(div) === false) {
         div = (div || element).parentElement;
+        seen.push(div); 
         if(limit++ > 8) {
             div = element;
+            var withItem = seen.filter((f) => f.tagName.indexOf("ITEM") >= 0);
+            if(withItem.length) {
+                div = withItem[0];
+            }
             break;
         }
     }
@@ -1093,16 +1107,13 @@ setInterval(function() {
     var currentUrl = window.location;
     if(currentUrl.pathname !== lastUrl) {
         thumbnailBatch = 0;
+        console.log("New URL; clearing thumbnail batch", lastUrl, currentUrl.pathname);
         lastUrl = currentUrl.pathname;
-        console.log("New URL; clearing thumbnail batch");
         injectScript();
         if(THUMBNAIL_INTERVAL) {
             clearInterval(THUMBNAIL_INTERVAL);
         }
         setTimeout(checkThumbnails, 1500);
-        if(!IS_MOBILE) {
-            THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
-        }
     }
     var w = HELPERS.GetVideoId(currentUrl.href);
     if(WATCHING !== w) {
@@ -1132,5 +1143,7 @@ setInterval(function() {
             a.innerHTML = "";
             a.appendChild(vidToolTip.Build());
         }
+    } else if(THUMBNAIL_INTERVAL === null) {
+        THUMBNAIL_INTERVAL = setInterval(checkThumbnails, 15000);
     }
 }, 500);
