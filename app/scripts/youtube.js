@@ -435,6 +435,11 @@ function parseLabel(ariaText) {
     return (hours * 3600) + (mins * 60) + seconds;
 }
 
+function isAnchorElement(element) {
+    return element.tagName === "A" 
+    || isDesktopWatchCard(element);
+}
+
 function setElementThumbnail(element, data) {
     if(element.getAttribute("aria-hidden")) {
         console.log("Element is hidden: ", element);
@@ -442,11 +447,18 @@ function setElementThumbnail(element, data) {
         return "hidden";
     }
     var anchor = null;
-    while(anchor === null || anchor.tagName !== "A") {
+    var limit = 0;
+    while(anchor === null || isAnchorElement(anchor) == false) {
+        if(limit++ > 10) {
+            console.log("Could not get anchor:", element);
+            ROOT.timeEnd();
+            return "no anchor";
+        }
         anchor = (anchor || element).parentElement;
     }
-    if(anchor.href.indexOf("/shorts/") >= 0) return "shorts";
-    var id = HELPERS.GetVideoId(anchor.href);
+    const href = anchor.href || anchor.getAttribute("href");
+    if(href.indexOf("/shorts/") >= 0) return "shorts";
+    var id = HELPERS.GetVideoId(href);
     data.id = id;
     if(!id) {
         console.log("Could not get ID:", element);
@@ -756,9 +768,12 @@ const ytmThumbnailTags = ["ytm-compact-video-renderer", "ytm-rich-item-renderer"
 function isMobileThumbnail(el) {
     return ytmThumbnailTags.indexOf(el.tagName.toLowerCase()) >= 0;
 }
+function isDesktopWatchCard(element) {
+    return element.tagName === "DIV" && element.id === "watch-card-endpoint";
+}
 
 function isPersistentThumbnailElement(el) {
-    return isDivThumbnail(el) || isDesktopThumbnail(el) || isMobileThumbnail(el);
+    return isDivThumbnail(el) || isDesktopThumbnail(el) || isMobileThumbnail(el) || isDesktopWatchCard(el);
 }
 
 function storeThumbnailElement(id, element) {
