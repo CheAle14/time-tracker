@@ -474,8 +474,11 @@ async function handleMessageWithWs(message, sender, reply) {
             existing = new RedditCacheItem(message.data.id, 0, [], 0);
         }
         existing.cachedAt = Date.now();
-        existing.visits.push(Date.now());
-        existing.count = message.data.count;
+        let new_entry = {
+            t: Date.now(),
+            c: message.data.count
+        };
+        existing.visits.push(new_entry);
         CACHE.Insert(existing);
         await setState("cache", CACHE.Save());
         var rep = await fetchWs(new WebSocketPacket(EXTERNAL.VISITED_THREAD, message.data));
@@ -509,7 +512,7 @@ async function getThreadCounts(idArray) {
         var wsResponse = await fetchWs(new WebSocketPacket(EXTERNAL.GET_THREADS, mustfetch));
         for(let id in wsResponse.content) {
             var data = wsResponse.content[id];
-            var item = new RedditCacheItem(id, Date.now(), data.when, data.count);
+            var item = new RedditCacheItem(id, Date.now(), data.when);
             CACHE.Add(item);
             result[id] = item;
         }
@@ -600,7 +603,7 @@ async function wsMessage(event) {
         // similarly, catchup with threads.
         for(let id in packet.content) {
             var data = packet.content[id];
-            var item = new RedditCacheItem(id, Date.now(), data.when, data.count);
+            var item = new RedditCacheItem(id, Date.now(), data.when);
             CACHE.Add(item);
         }
         if(CACHE.dirty) {

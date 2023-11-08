@@ -167,9 +167,8 @@ export class YoutubeCacheItem extends CacheItem {
 }
 
 export class RedditCacheItem extends CacheItem {
-    constructor(id, cachedAt, visitedAt, count) {
+    constructor(id, cachedAt, visitedAt) {
         super(CACHE_KIND.REDDIT, id, cachedAt);
-        this.count = count;
         this.ttl = 60 * 60; // seconds to live in cache
         if(typeof(visitedAt) === "number") {
             this.visits = [visitedAt];
@@ -195,7 +194,6 @@ export class RedditCacheItem extends CacheItem {
     }
     Save() {
         var d = super.Save();
-        d.count = this.count;
         d.visits = this.visits;
         return d;
     }
