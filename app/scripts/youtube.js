@@ -361,6 +361,12 @@ function skipAd() {
         var x = arr[0];
         if(x) x.click();
     }
+
+    arr = document.getElementsByClassName("ytp-ad-skip-button-modern");
+    if(arr && arr.length > 0) {
+        var x = arr[0];
+        if(x) x.click();
+    }
 }
 
 function getChannelName() {
@@ -688,10 +694,13 @@ function setCurrentTimeCorrect() {
 
 /**
  * Gets the time, in seconds, that is specified in the `?t=` query param.  
- * Null if there isn't any.
+ * Null if there isn't any, or if this is a playlist video.
  */
 function getQueryTime() {
     const urlSearchParams = new URLSearchParams(window.location.search);
+    if (urlSearchParams.get("list")) {
+        return null;
+    }
     var time = urlSearchParams.get("t");
     if(!time) {
         return null;
