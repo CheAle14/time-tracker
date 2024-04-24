@@ -10,6 +10,10 @@ var BLOCKLISTED_VIDEOS = {};
 var THUMBNAIL_ELEMENTS = {};
 var THUMBNAIL_INTERVAL = null;
 
+const SELECTORS = {
+    THUMBNAIL_TEXT: () => IS_MOBILE ? "ytm-thumbnail-overlay-time-status-renderer" : "div.badge-shape-wiz__text"
+}
+
 const ROOT = new DebugTimer(/*log*/ false);
 
 const vidToolTip = new VideoToolTip();
@@ -318,7 +322,7 @@ function getThumbnails() {
         var elements = document.getElementsByTagName("ytd-thumbnail-overlay-time-status-renderer");
         var arr = [];
         for(var el of elements) {
-            arr.push(el.querySelector("span#text"));
+            arr.push(el.querySelector(SELECTORS.THUMBNAIL_TEXT()));
         }
         return arr;
     }
@@ -791,6 +795,11 @@ function storeThumbnailElement(id, element) {
     var seen = [element];
     while(div === null || isPersistentThumbnailElement(div) === false) {
         div = (div || element).parentElement;
+
+        if (div.tagName === "YTD-PLAYLIST-THUMBNAIL") {
+            return;
+        }
+
         seen.push(div); 
         if(limit++ > 8) {
             div = element;
@@ -808,11 +817,7 @@ function storeThumbnailElement(id, element) {
 function getThumbnailElement(id) {
     var elem = THUMBNAIL_ELEMENTS[id];
     if(elem === null || elem === undefined) return elem;
-    if(IS_MOBILE) {
-        return elem.querySelector("ytm-thumbnail-overlay-time-status-renderer");
-    } else {
-        return elem.querySelector("span#text");
-    }
+    return elem.querySelector(SELECTORS.THUMBNAIL_TEXT());
 }
 
 function setTimes(data) {
@@ -828,7 +833,7 @@ function setTimes(data) {
             delete THUMBNAIL_ELEMENTS[id];
         } else {
             if(id !== WATCHING) {
-                console.warn("Could not find element for ", id);
+                console.warn("Could not find element for ", id, elem);
             }
         }
     }
